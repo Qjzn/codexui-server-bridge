@@ -548,6 +548,48 @@ function mergeThreadGroups(
   return areGroupArraysEqual(previous, mergedGroups) ? previous : mergedGroups
 }
 
+function mergeIncomingWithLocalInProgressThreads(
+  previous: UiProjectGroup[],
+  incoming: UiProjectGroup[],
+  inProgressById: Record<string, boolean>,
+): UiProjectGroup[] {
+  const incomingThreadIds = new Set(flattenThreads(incoming).map((thread) => thread.id))
+  const localInProgressThreads = flattenThreads(previous).filter(
+    (thread) => inProgressById[thread.id] === true && !incomingThreadIds.has(thread.id),
+  )
+
+  if (localInProgressThreads.length === 0) {
+    return incoming
+  }
+
+  const incomingByProjectName = new Map(incoming.map((group) => [group.projectName, group]))
+  const merged: UiProjectGroup[] = incoming.map((group) => ({
+    projectName: group.projectName,
+    threads: [...group.threads],
+  }))
+
+  for (const thread of localInProgressThreads) {
+    const existingGroup = incomingByProjectName.get(thread.projectName)
+    if (existingGroup) {
+      const mergedGroupIndex = merged.findIndex((group) => group.projectName === thread.projectName)
+      if (mergedGroupIndex >= 0) {
+        merged[mergedGroupIndex] = {
+          projectName: merged[mergedGroupIndex].projectName,
+          threads: [thread, ...merged[mergedGroupIndex].threads],
+        }
+      }
+      continue
+    }
+
+    merged.push({
+      projectName: thread.projectName,
+      threads: [thread],
+    })
+  }
+
+  return merged
+}
+
 function toProjectName(cwd: string): string {
   const parts = cwd.split('/').filter(Boolean)
   return parts.at(-1) || cwd || 'unknown-project'
@@ -1784,7 +1826,12 @@ export function useDesktopState() {
       }
 
       const orderedGroups = orderGroupsByProjectOrder(groups, projectOrder.value)
-      sourceGroups.value = mergeThreadGroups(sourceGroups.value, orderedGroups)
+      const mergedWithInProgress = mergeIncomingWithLocalInProgressThreads(
+        sourceGroups.value,
+        orderedGroups,
+        inProgressById.value,
+      )
+      sourceGroups.value = mergeThreadGroups(sourceGroups.value, mergedWithInProgress)
       inProgressById.value = pruneThreadStateMap(
         inProgressById.value,
         new Set(flattenThreads(sourceGroups.value).map((thread) => thread.id)),
