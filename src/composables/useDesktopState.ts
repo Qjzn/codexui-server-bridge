@@ -2256,6 +2256,19 @@ export function useDesktopState() {
     applyThreadFlags()
   }
 
+  function pinProjectToTop(projectName: string): void {
+    const normalizedName = projectName.trim()
+    if (!normalizedName) return
+    const nextOrder = [normalizedName, ...projectOrder.value.filter((name) => name !== normalizedName)]
+    if (areStringArraysEqual(projectOrder.value, nextOrder)) return
+    projectOrder.value = nextOrder
+    saveProjectOrder(projectOrder.value)
+
+    const orderedGroups = orderGroupsByProjectOrder(sourceGroups.value, projectOrder.value)
+    sourceGroups.value = mergeThreadGroups(sourceGroups.value, orderedGroups)
+    applyThreadFlags()
+  }
+
   async function syncThreadStatus(): Promise<void> {
     if (isPolling.value) return
     isPolling.value = true
@@ -2513,6 +2526,7 @@ export function useDesktopState() {
     renameProject,
     removeProject,
     reorderProject,
+    pinProjectToTop,
     toggleAutoRefreshTimer,
     startPolling,
     stopPolling,

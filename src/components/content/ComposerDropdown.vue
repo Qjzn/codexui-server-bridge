@@ -46,14 +46,31 @@
           </li>
         </ul>
 
-        <button
-          v-if="showAddAction"
-          type="button"
-          class="composer-dropdown-add"
-          @click="onAdd"
-        >
-          {{ addActionLabelText }}
-        </button>
+        <div v-if="showAddAction" class="composer-dropdown-add-wrap">
+          <template v-if="isAdding">
+            <input
+              ref="addInputRef"
+              v-model="addDraft"
+              class="composer-dropdown-add-input"
+              type="text"
+              :placeholder="addPlaceholderText"
+              @keydown.enter.prevent="onConfirmAdd"
+              @keydown.esc.prevent="onCancelAdd"
+            />
+            <div class="composer-dropdown-add-actions">
+              <button type="button" class="composer-dropdown-add-btn" @click="onConfirmAdd">Open</button>
+              <button type="button" class="composer-dropdown-add-btn" @click="onCancelAdd">Cancel</button>
+            </div>
+          </template>
+          <button
+            v-else
+            type="button"
+            class="composer-dropdown-add"
+            @click="onStartAdd"
+          >
+            {{ addActionLabelText }}
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -78,17 +95,22 @@ const props = defineProps<{
   searchPlaceholder?: string
   showAddAction?: boolean
   addActionLabel?: string
+  defaultAddValue?: string
+  addPlaceholder?: string
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
-  add: []
+  add: [value: string]
 }>()
 
 const rootRef = ref<HTMLElement | null>(null)
 const searchInputRef = ref<HTMLInputElement | null>(null)
+const addInputRef = ref<HTMLInputElement | null>(null)
 const isOpen = ref(false)
 const searchQuery = ref('')
+const isAdding = ref(false)
+const addDraft = ref('')
 
 const selectedLabel = computed(() => {
   const selected = props.options.find((option) => option.value === props.modelValue)
@@ -101,6 +123,7 @@ const enableSearch = computed(() => props.enableSearch === true)
 const showAddAction = computed(() => props.showAddAction === true)
 const searchPlaceholderText = computed(() => props.searchPlaceholder?.trim() || 'Quick search projects')
 const addActionLabelText = computed(() => props.addActionLabel?.trim() || 'Add new project')
+const addPlaceholderText = computed(() => props.addPlaceholder?.trim() || 'Project name or absolute path')
 const filteredOptions = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
   if (!query) return props.options
@@ -120,10 +143,10 @@ function onSelect(value: string): void {
   searchQuery.value = ''
 }
 
-function onAdd(): void {
-  emit('add')
-  isOpen.value = false
-  searchQuery.value = ''
+function onStartAdd(): void {
+  isAdding.value = true
+  addDraft.value = props.defaultAddValue?.trim() || ''
+  nextTick(() => addInputRef.value?.focus())
 }
 
 function onEscapeSearch(): void {
@@ -132,6 +155,22 @@ function onEscapeSearch(): void {
     return
   }
   isOpen.value = false
+}
+
+function onConfirmAdd(): void {
+  const value = addDraft.value.trim()
+  if (!value) return
+  emit('add', value)
+  isAdding.value = false
+  addDraft.value = ''
+  isOpen.value = false
+  searchQuery.value = ''
+}
+
+function onCancelAdd(): void {
+  isAdding.value = false
+  addDraft.value = ''
+  nextTick(() => searchInputRef.value?.focus())
 }
 
 function onDocumentPointerDown(event: PointerEvent): void {
@@ -144,10 +183,16 @@ function onDocumentPointerDown(event: PointerEvent): void {
   if (root.contains(target)) return
   isOpen.value = false
   searchQuery.value = ''
+  isAdding.value = false
+  addDraft.value = ''
 }
 
 watch(isOpen, (open) => {
-  if (!open) return
+  if (!open) {
+    isAdding.value = false
+    addDraft.value = ''
+    return
+  }
   if (!enableSearch.value) return
   nextTick(() => searchInputRef.value?.focus())
 })
@@ -226,5 +271,21 @@ onBeforeUnmount(() => {
 
 .composer-dropdown-add {
   @apply mt-1 flex w-full items-center rounded-lg border-0 border-t border-zinc-200 bg-transparent px-2 py-2 text-left text-sm font-medium text-zinc-800 transition hover:bg-zinc-100;
+}
+
+.composer-dropdown-add-wrap {
+  @apply mt-1 border-t border-zinc-200 pt-1;
+}
+
+.composer-dropdown-add-input {
+  @apply w-full rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-800 outline-none transition focus:border-zinc-400;
+}
+
+.composer-dropdown-add-actions {
+  @apply mt-1 flex items-center gap-1;
+}
+
+.composer-dropdown-add-btn {
+  @apply rounded-md border border-zinc-200 bg-white px-2 py-0.5 text-xs text-zinc-700 transition hover:bg-zinc-100;
 }
 </style>

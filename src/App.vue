@@ -98,6 +98,8 @@
                   search-placeholder="Quick search project"
                   :show-add-action="true"
                   add-action-label="+ Add new project"
+                  :default-add-value="defaultNewProjectName"
+                  add-placeholder="Project name or absolute path"
                   :disabled="false" @update:model-value="onSelectNewThreadFolder"
                   @add="onAddNewProject" />
               </div>
@@ -206,6 +208,7 @@ const {
   renameProject,
   removeProject,
   reorderProject,
+  pinProjectToTop,
   toggleAutoRefreshTimer,
   startPolling,
   stopPolling,
@@ -284,6 +287,7 @@ const newThreadFolderOptions = computed(() => {
 
   return options
 })
+const defaultNewProjectName = computed(() => getDefaultNewProjectName())
 
 onMounted(() => {
   window.addEventListener('keydown', onWindowKeyDown)
@@ -402,10 +406,8 @@ function onSelectNewThreadFolder(cwd: string): void {
   newThreadCwd.value = cwd.trim()
 }
 
-async function onAddNewProject(): Promise<void> {
-  const defaultName = getDefaultNewProjectName()
-  const entered = window.prompt('Project name (or paste full path)', defaultName)
-  const normalizedInput = entered?.trim() ?? ''
+async function onAddNewProject(rawInput: string): Promise<void> {
+  const normalizedInput = rawInput.trim()
   if (!normalizedInput) return
 
   const isPath = looksLikePath(normalizedInput)
@@ -421,6 +423,7 @@ async function onAddNewProject(): Promise<void> {
     })
     if (normalizedPath) {
       newThreadCwd.value = normalizedPath
+      pinProjectToTop(getPathLeafName(normalizedPath))
     }
   } catch {
     // Error is surfaced on next request if path is invalid.
