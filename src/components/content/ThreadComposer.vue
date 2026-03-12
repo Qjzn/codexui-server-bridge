@@ -138,7 +138,7 @@
           placeholder="Skills"
           search-placeholder="Search skills..."
           open-direction="up"
-          :disabled="disabled || !activeThreadId || isTurnInProgress || (skills ?? []).length === 0"
+          :disabled="disabled || !activeThreadId || isTurnInProgress"
           @toggle="onSkillDropdownToggle"
         />
 
@@ -819,7 +819,7 @@ watch(
 }
 
 .thread-composer-controls {
-  @apply mt-2 sm:mt-3 flex items-center gap-2 sm:gap-4 overflow-x-auto;
+  @apply mt-2 sm:mt-3 flex items-center gap-2 sm:gap-4 overflow-x-auto overflow-y-visible;
 }
 
 .thread-composer-attach {
