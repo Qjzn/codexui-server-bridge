@@ -3,6 +3,7 @@ import vue from "@vitejs/plugin-vue";
 import { createCodexBridgeMiddleware } from "./src/server/codexAppServerBridge";
 import tailwindcss from "@tailwindcss/vite";
 import { createReadStream } from "node:fs";
+import { readdir, stat } from "node:fs/promises";
 import { basename, extname, isAbsolute } from "node:path";
 import { WebSocketServer, type WebSocket } from "ws";
 
@@ -50,6 +51,69 @@ function decodeBrowsePath(rawPath: string): string {
   } catch {
     return rawPath;
   }
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/gu, "&amp;")
+    .replace(/</gu, "&lt;")
+    .replace(/>/gu, "&gt;")
+    .replace(/"/gu, "&quot;")
+    .replace(/'/gu, "&#39;");
+}
+
+function toBrowseHref(pathValue: string): string {
+  return `/codex-local-browse${encodeURI(pathValue)}`;
+}
+
+async function renderDirectoryListing(res: import("node:http").ServerResponse, localPath: string): Promise<void> {
+  const entries = await readdir(localPath, { withFileTypes: true });
+  const sorted = entries
+    .slice()
+    .sort((a, b) => {
+      if (a.isDirectory() && !b.isDirectory()) return -1;
+      if (!a.isDirectory() && b.isDirectory()) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+  const rows = sorted
+    .map((entry) => {
+      const entryPath = `${localPath.replace(/\/+$/u, "")}/${entry.name}`;
+      const suffix = entry.isDirectory() ? "/" : "";
+      return `<li><a href="${escapeHtml(toBrowseHref(entryPath))}">${escapeHtml(entry.name)}${suffix}</a></li>`;
+    })
+    .join("\n");
+
+  const parentPath = localPath === "/" ? "/" : localPath.replace(/\/+$/u, "").replace(/\/[^/]+$/u, "") || "/";
+  const parentLink = localPath !== parentPath
+    ? `<p><a href="${escapeHtml(toBrowseHref(parentPath))}">..</a></p>`
+    : "";
+
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Index of ${escapeHtml(localPath)}</title>
+  <style>
+    body { font-family: ui-monospace, Menlo, Monaco, monospace; margin: 24px; background: #0b1020; color: #dbe6ff; }
+    a { color: #8cc2ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    ul { list-style: none; padding: 0; margin: 12px 0 0; }
+    li { padding: 3px 0; }
+    h1 { font-size: 18px; margin: 0; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <h1>Index of ${escapeHtml(localPath)}</h1>
+  ${parentLink}
+  <ul>${rows}</ul>
+</body>
+</html>`;
+
+  res.statusCode = 200;
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.end(html);
 }
 
 function getWorktreeName(): string {
@@ -188,7 +252,7 @@ export default defineConfig({
           });
           stream.pipe(res);
         });
-        server.middlewares.use((req, res, next) => {
+        server.middlewares.use(async (req, res, next) => {
           if (!req.url || (req.method !== "GET" && req.method !== "HEAD")) return next();
           const url = new URL(req.url, "http://localhost");
           if (!url.pathname.startsWith("/codex-local-browse/")) return next();
@@ -201,16 +265,28 @@ export default defineConfig({
             return;
           }
 
-          res.statusCode = 200;
-          res.setHeader("Cache-Control", "private, no-store");
-          const stream = createReadStream(localPath);
-          stream.on("error", () => {
-            if (res.headersSent) return;
+          try {
+            const fileStat = await stat(localPath);
+            res.setHeader("Cache-Control", "private, no-store");
+            if (fileStat.isDirectory()) {
+              await renderDirectoryListing(res, localPath);
+              return;
+            }
+
+            res.statusCode = 200;
+            const stream = createReadStream(localPath);
+            stream.on("error", () => {
+              if (res.headersSent) return;
+              res.statusCode = 404;
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify({ error: "File not found." }));
+            });
+            stream.pipe(res);
+          } catch {
             res.statusCode = 404;
             res.setHeader("Content-Type", "application/json");
             res.end(JSON.stringify({ error: "File not found." }));
-          });
-          stream.pipe(res);
+          }
         });
         server.middlewares.use(bridge);
         server.httpServer?.once("close", () => {
