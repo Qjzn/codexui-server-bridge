@@ -83,6 +83,40 @@ termux-wake-lock
 
 ---
 
+## iPhone / iPad via Tailscale Serve
+
+If you want to use codexUI from iPhone or iPad Safari, serving it over HTTPS is recommended.
+
+A practical private setup is to run codexUI locally and publish it inside your tailnet with Tailscale Serve:
+
+```powershell
+npx codexapp --no-tunnel --port 5999
+tailscale serve --bg 5999
+```
+
+Then open:
+
+```text
+https://<your-machine>.<your-tailnet>.ts.net
+```
+
+This setup worked well in practice for:
+
+- iPhone Safari access
+- Add to Home Screen
+- the built-in dictation / transcription feature in the app
+- viewing the same projects and conversations from the Windows host
+
+Notes:
+
+- Tailscale Serve keeps access private to your tailnet
+- on iOS, HTTPS / secure context appears to be important for mobile browser access and dictation
+- some minor mobile Safari CSS issues may still exist, but they do not prevent normal use
+- depending on proxying details, authentication behavior may differ from direct remote access
+- if conversations created in the web UI do not immediately appear in the Windows app, restarting the Windows app may refresh them
+
+---
+
 ## ✨ Features
 > **The payload.**
 
