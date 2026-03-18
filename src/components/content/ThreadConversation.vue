@@ -542,7 +542,7 @@ function trimLinkWrappers(value: string): { core: string; leading: string; trail
   return { core, leading, trailing }
 }
 
-function splitTextByFileUrls(text: string): InlineSegment[] {
+function splitPlainTextByLinks(text: string): InlineSegment[] {
   const segments: InlineSegment[] = []
   const pattern = /\S+/gu
   let cursor = 0
@@ -599,6 +599,53 @@ function splitTextByFileUrls(text: string): InlineSegment[] {
 
   if (cursor < text.length) {
     segments.push({ kind: 'text', value: text.slice(cursor) })
+  }
+
+  return segments
+}
+
+function splitTextByFileUrls(text: string): InlineSegment[] {
+  const markdownLinkPattern = /\[([^\]\n]+)\]\(([^)\n]+)\)/gu
+  const segments: InlineSegment[] = []
+  let cursor = 0
+
+  for (const match of text.matchAll(markdownLinkPattern)) {
+    if (typeof match.index !== 'number') continue
+    const [fullMatch, labelRaw, targetRaw] = match
+    const start = match.index
+    const end = start + fullMatch.length
+
+    if (start > cursor) {
+      segments.push(...splitPlainTextByLinks(text.slice(cursor, start)))
+    }
+
+    const labelWrapped = trimLinkWrappers((labelRaw ?? '').trim())
+    const label = labelWrapped.core.trim() || (labelRaw ?? '').trim()
+    const targetWrapped = trimLinkWrappers((targetRaw ?? '').trim())
+    const target = targetWrapped.core.trim()
+
+    if (/^https?:\/\//u.test(target)) {
+      segments.push({ kind: 'url', value: label || target, href: target })
+    } else {
+      const ref = parseFileReference(target)
+      if (ref) {
+        segments.push({
+          kind: 'file',
+          value: target,
+          path: ref.path,
+          displayPath: label || target,
+          downloadName: getBasename(ref.path),
+        })
+      } else {
+        segments.push({ kind: 'text', value: fullMatch })
+      }
+    }
+
+    cursor = end
+  }
+
+  if (cursor < text.length) {
+    segments.push(...splitPlainTextByLinks(text.slice(cursor)))
   }
 
   return segments
