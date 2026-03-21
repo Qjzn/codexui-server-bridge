@@ -573,6 +573,9 @@ async function rollbackAndResendDictation(payload: {
   fileAttachments: Array<{ label: string; path: string; fsPath: string }>
   skills: Array<{ name: string; path: string }>
 }): Promise<void> {
+  if (isSelectedThreadInProgress.value) {
+    await interruptSelectedThreadTurn()
+  }
   const rollbackTargetTurnIndex = latestUserTurnIndex.value
   if (rollbackTargetTurnIndex >= 0) {
     await rollbackSelectedThread(rollbackTargetTurnIndex)
