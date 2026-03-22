@@ -229,6 +229,34 @@
   @apply text-zinc-300 hover:bg-zinc-700;
 }
 
+:root.dark .thread-composer-attach-separator {
+  @apply bg-zinc-700;
+}
+
+:root.dark .thread-composer-attach-setting {
+  @apply text-zinc-300 hover:bg-zinc-700;
+}
+
+:root.dark .thread-composer-attach-setting-label {
+  @apply text-zinc-100;
+}
+
+:root.dark .thread-composer-attach-setting-description {
+  @apply text-zinc-400;
+}
+
+:root.dark .thread-composer-attach-switch {
+  @apply bg-zinc-600;
+}
+
+:root.dark .thread-composer-attach-switch::after {
+  @apply bg-zinc-100;
+}
+
+:root.dark .thread-composer-attach-switch.is-on {
+  @apply bg-emerald-500;
+}
+
 :root.dark .thread-composer-file-mentions {
   @apply border-zinc-600 bg-zinc-800;
 }

@@ -169,14 +169,19 @@
                 <ThreadComposer :active-thread-id="composerThreadContextId"
                   :cwd="composerCwd"
                 :models="availableModelIds" :selected-model="selectedModelId"
-                :selected-reasoning-effort="selectedReasoningEffort" :skills="installedSkills"
+                :selected-reasoning-effort="selectedReasoningEffort"
+                :selected-speed-mode="selectedSpeedMode"
+                :is-updating-speed-mode="isUpdatingSpeedMode"
+                :skills="installedSkills"
                 :is-turn-in-progress="false"
                 :is-interrupting-turn="false" :send-with-enter="sendWithEnter" :in-progress-submit-mode="inProgressSendMode"
                 :dictation-click-to-toggle="dictationClickToToggle" :dictation-auto-send="dictationAutoSend"
                 :prepend-draft-request="rollbackDraftPrependRequest"
                 :dictation-language="dictationLanguage"
                 @submit="onSubmitThreadMessage"
-                @update:selected-model="onSelectModel" @update:selected-reasoning-effort="onSelectReasoningEffort" />
+                @update:selected-model="onSelectModel"
+                @update:selected-reasoning-effort="onSelectReasoningEffort"
+                @update:selected-speed-mode="onSelectSpeedMode" />
             </div>
           </template>
           <template v-else>
@@ -203,7 +208,10 @@
                 <ThreadComposer ref="threadComposerRef" :active-thread-id="composerThreadContextId"
                   :cwd="composerCwd"
                   :models="availableModelIds"
-                  :selected-model="selectedModelId" :selected-reasoning-effort="selectedReasoningEffort"
+                  :selected-model="selectedModelId"
+                  :selected-reasoning-effort="selectedReasoningEffort"
+                  :selected-speed-mode="selectedSpeedMode"
+                  :is-updating-speed-mode="isUpdatingSpeedMode"
                   :skills="installedSkills"
                   :is-turn-in-progress="isSelectedThreadInProgress" :is-interrupting-turn="isInterruptingTurn"
                   :has-queue-above="selectedThreadQueuedMessages.length > 0"
@@ -212,7 +220,9 @@
                   :prepend-draft-request="rollbackDraftPrependRequest"
                   :dictation-language="dictationLanguage"
                   @submit="onSubmitThreadMessage" @update:selected-model="onSelectModel"
-                  @update:selected-reasoning-effort="onSelectReasoningEffort" @interrupt="onInterruptTurn" />
+                  @update:selected-reasoning-effort="onSelectReasoningEffort"
+                  @update:selected-speed-mode="onSelectSpeedMode"
+                  @interrupt="onInterruptTurn" />
               </div>
             </div>
           </template>
@@ -252,7 +262,7 @@ import {
   openProjectRoot,
   searchThreads,
 } from './api/codexGateway'
-import type { ReasoningEffort, ThreadScrollState } from './types/codex'
+import type { ReasoningEffort, SpeedMode, ThreadScrollState } from './types/codex'
 import type { ComposerDraftPayload, ThreadComposerExposed } from './components/content/ThreadComposer.vue'
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'codex-web-local.sidebar-collapsed.v1'
@@ -372,6 +382,7 @@ const {
   availableModelIds,
   selectedModelId,
   selectedReasoningEffort,
+  selectedSpeedMode,
   installedSkills,
   accountRateLimitSnapshots,
   messages,
@@ -379,6 +390,7 @@ const {
   isLoadingMessages,
   isSendingMessage,
   isInterruptingTurn,
+  isUpdatingSpeedMode,
   refreshAll,
   refreshSkills,
   selectThread,
@@ -395,6 +407,7 @@ const {
   steerQueuedMessage,
   setSelectedModelId,
   setSelectedReasoningEffort,
+  updateSelectedSpeedMode,
   respondToPendingServerRequest,
   renameProject,
   removeProject,
@@ -892,6 +905,10 @@ function onSelectModel(modelId: string): void {
 
 function onSelectReasoningEffort(effort: ReasoningEffort | ''): void {
   setSelectedReasoningEffort(effort)
+}
+
+function onSelectSpeedMode(mode: SpeedMode): void {
+  void updateSelectedSpeedMode(mode)
 }
 
 function onInterruptTurn(): void {

@@ -21,11 +21,12 @@ import {
   normalizeThreadMessagesV2,
   readThreadInProgressFromResponse,
 } from './normalizers/v2'
-import type { UiMessage, UiProjectGroup } from '../types/codex'
+import type { SpeedMode, UiMessage, UiProjectGroup } from '../types/codex'
 
 type CurrentModelConfig = {
   model: string
   reasoningEffort: ReasoningEffort | ''
+  speedMode: SpeedMode
 }
 
 export type WorkspaceRootsState = {
@@ -62,6 +63,12 @@ function normalizeReasoningEffort(value: unknown): ReasoningEffort | '' {
   return typeof value === 'string' && allowed.includes(value as ReasoningEffort)
     ? (value as ReasoningEffort)
     : ''
+}
+
+function normalizeSpeedMode(value: unknown): SpeedMode {
+  return typeof value === 'string' && value.trim().toLowerCase() === 'fast'
+    ? 'fast'
+    : 'standard'
 }
 
 async function getThreadGroupsV2(): Promise<UiProjectGroup[]> {
@@ -272,6 +279,26 @@ export async function setDefaultModel(model: string): Promise<void> {
   await callRpc('setDefaultModel', { model })
 }
 
+export async function setCodexSpeedMode(mode: SpeedMode): Promise<void> {
+  const normalizedMode: SpeedMode = mode === 'fast' ? 'fast' : 'standard'
+  await callRpc('config/batchWrite', {
+    edits: [
+      {
+        keyPath: 'features.fast_mode',
+        value: true,
+        mergeStrategy: 'upsert',
+      },
+      {
+        keyPath: 'service_tier',
+        value: normalizedMode === 'fast' ? 'fast' : null,
+        mergeStrategy: normalizedMode === 'fast' ? 'upsert' : 'replace',
+      },
+    ],
+    filePath: null,
+    expectedVersion: null,
+  })
+}
+
 export async function getAvailableModelIds(): Promise<string[]> {
   const payload = await callRpc<ModelListResponse>('model/list', {})
   const ids: string[] = []
@@ -287,7 +314,8 @@ export async function getCurrentModelConfig(): Promise<CurrentModelConfig> {
   const payload = await callRpc<ConfigReadResponse>('config/read', {})
   const model = payload.config.model ?? ''
   const reasoningEffort = normalizeReasoningEffort(payload.config.model_reasoning_effort)
-  return { model, reasoningEffort }
+  const speedMode = normalizeSpeedMode(payload.config.service_tier)
+  return { model, reasoningEffort, speedMode }
 }
 
 export async function getAccountRateLimits(): Promise<GetAccountRateLimitsResponse> {

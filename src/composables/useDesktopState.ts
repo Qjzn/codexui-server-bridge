@@ -13,6 +13,7 @@ import {
   rollbackThread,
   getThreadGroups,
   getWorkspaceRootsState,
+  setCodexSpeedMode,
   setDefaultModel,
   setWorkspaceRootsState,
   getThreadTitleCache,
@@ -28,6 +29,7 @@ import {
 import type {
   CommandExecutionData,
   ReasoningEffort,
+  SpeedMode,
   ThreadScrollState,
   UiLiveOverlay,
   UiMessage,
@@ -657,6 +659,7 @@ export function useDesktopState() {
   const availableModelIds = ref<string[]>([])
   const selectedModelId = ref(loadSelectedModelId())
   const selectedReasoningEffort = ref<ReasoningEffort | ''>('medium')
+  const selectedSpeedMode = ref<SpeedMode>('standard')
   const readStateByThreadId = ref<Record<string, string>>(loadReadStateMap())
   const scrollStateByThreadId = ref<Record<string, ThreadScrollState>>(loadThreadScrollStateMap())
   const projectOrder = ref<string[]>(loadProjectOrder())
@@ -680,6 +683,7 @@ export function useDesktopState() {
   const isLoadingMessages = ref(false)
   const isSendingMessage = ref(false)
   const isInterruptingTurn = ref(false)
+  const isUpdatingSpeedMode = ref(false)
   const isRollingBack = ref(false)
   const error = ref('')
   const isPolling = ref(false)
@@ -857,10 +861,32 @@ export function useDesktopState() {
     selectedReasoningEffort.value = effort
   }
 
+  async function updateSelectedSpeedMode(mode: SpeedMode): Promise<void> {
+    const nextMode: SpeedMode = mode === 'fast' ? 'fast' : 'standard'
+    if (isUpdatingSpeedMode.value || selectedSpeedMode.value === nextMode) {
+      return
+    }
+
+    const previousMode = selectedSpeedMode.value
+    selectedSpeedMode.value = nextMode
+    isUpdatingSpeedMode.value = true
+    error.value = ''
+
+    try {
+      await setCodexSpeedMode(nextMode)
+    } catch (unknownError) {
+      selectedSpeedMode.value = previousMode
+      error.value = unknownError instanceof Error ? unknownError.message : 'Failed to update Fast mode'
+    } finally {
+      isUpdatingSpeedMode.value = false
+    }
+  }
+
   function buildPendingTurnDetails(modelId: string, effort: ReasoningEffort | ''): string[] {
     const modelLabel = modelId.trim() || 'default'
     const effortLabel = effort || 'default'
-    return [`Model: ${modelLabel}`, `Thinking: ${effortLabel}`]
+    const speedLabel = selectedSpeedMode.value === 'fast' ? 'Fast' : 'Standard'
+    return [`Model: ${modelLabel}`, `Thinking: ${effortLabel}`, `Speed: ${speedLabel}`]
   }
 
   async function refreshModelPreferences(): Promise<void> {
@@ -890,6 +916,7 @@ export function useDesktopState() {
       ) {
         selectedReasoningEffort.value = currentConfig.reasoningEffort
       }
+      selectedSpeedMode.value = currentConfig.speedMode
     } catch {
       // Keep chat UI usable even if model metadata is temporarily unavailable.
     }
@@ -2243,6 +2270,8 @@ export function useDesktopState() {
     fileAttachments: FileAttachment[] = [],
     queueInsertIndex?: number,
   ): Promise<void> {
+    if (isUpdatingSpeedMode.value) return
+
     const threadId = selectedThreadId.value
     const nextText = text.trim()
     if (!threadId || (!nextText && imageUrls.length === 0 && fileAttachments.length === 0)) return
@@ -2304,6 +2333,8 @@ export function useDesktopState() {
     skills: Array<{ name: string; path: string }> = [],
     fileAttachments: FileAttachment[] = [],
   ): Promise<string> {
+    if (isUpdatingSpeedMode.value) return ''
+
     const nextText = text.trim()
     const targetCwd = cwd.trim()
     const selectedModel = selectedModelId.value.trim()
@@ -2848,6 +2879,7 @@ export function useDesktopState() {
     availableModelIds,
     selectedModelId,
     selectedReasoningEffort,
+    selectedSpeedMode,
     installedSkills,
     accountRateLimitSnapshots,
     messages,
@@ -2855,6 +2887,7 @@ export function useDesktopState() {
     isLoadingMessages,
     isSendingMessage,
     isInterruptingTurn,
+    isUpdatingSpeedMode,
     error,
     refreshAll,
     refreshSkills,
@@ -2872,6 +2905,7 @@ export function useDesktopState() {
     steerQueuedMessage,
     setSelectedModelId,
     setSelectedReasoningEffort,
+    updateSelectedSpeedMode,
     respondToPendingServerRequest,
     renameProject,
     removeProject,
