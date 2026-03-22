@@ -128,6 +128,23 @@ Notes:
 - 🔌 Works with reverse proxies and tunneling setups
 - ⚡ No global install required for quick experimentation
 - 🎙️ Built-in hold-to-dictate voice input with transcription to composer draft
+- 🤖 Optional Telegram bot bridge: send messages to bot, forward into mapped thread, send assistant reply back to Telegram
+
+### Telegram Bot Bridge (Optional)
+
+Set these environment variables before starting `codexapp`:
+
+```bash
+export TELEGRAM_BOT_TOKEN="<your-telegram-bot-token>"
+export TELEGRAM_DEFAULT_CWD="$PWD" # optional, defaults to current working directory
+npx codexapp
+```
+
+Bot commands:
+
+- `/newthread` create and map a new Codex thread for this Telegram chat
+- `/thread <threadId>` map current Telegram chat to an existing thread
+- Any other text message is forwarded to the mapped thread
 
 ---
 

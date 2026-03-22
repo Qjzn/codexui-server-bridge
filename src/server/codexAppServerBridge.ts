@@ -69,6 +69,17 @@ type ThreadSearchIndex = {
   docsById: Map<string, ThreadSearchDocument>
 }
 
+type TelegramUpdate = {
+  update_id?: number
+  message?: {
+    message_id?: number
+    text?: string
+    chat?: {
+      id?: number
+    }
+  }
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -1196,6 +1207,210 @@ class MethodCatalog {
   }
 }
 
+class TelegramThreadBridge {
+  private readonly token: string
+  private readonly appServer: AppServerProcess
+  private readonly defaultCwd: string
+  private readonly threadIdByChatId = new Map<number, string>()
+  private readonly chatIdsByThreadId = new Map<string, Set<number>>()
+  private readonly lastForwardedTurnByThreadId = new Map<string, string>()
+  private active = false
+  private pollingTask: Promise<void> | null = null
+  private nextUpdateOffset = 0
+
+  constructor(appServer: AppServerProcess) {
+    this.appServer = appServer
+    this.token = process.env.TELEGRAM_BOT_TOKEN?.trim() ?? ''
+    this.defaultCwd = process.env.TELEGRAM_DEFAULT_CWD?.trim() ?? process.cwd()
+  }
+
+  start(): void {
+    if (!this.token || this.active) return
+    this.active = true
+    this.pollingTask = this.pollLoop()
+    this.appServer.onNotification((notification) => {
+      void this.handleNotification(notification).catch(() => {})
+    })
+  }
+
+  stop(): void {
+    this.active = false
+  }
+
+  private async pollLoop(): Promise<void> {
+    while (this.active) {
+      try {
+        const updates = await this.getUpdates()
+        for (const update of updates) {
+          const updateId = typeof update.update_id === 'number' ? update.update_id : -1
+          if (updateId >= 0) {
+            this.nextUpdateOffset = Math.max(this.nextUpdateOffset, updateId + 1)
+          }
+          await this.handleIncomingUpdate(update)
+        }
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 1500))
+      }
+    }
+  }
+
+  private async getUpdates(): Promise<TelegramUpdate[]> {
+    const response = await fetch(this.apiUrl('getUpdates'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        timeout: 45,
+        offset: this.nextUpdateOffset,
+        allowed_updates: ['message'],
+      }),
+    })
+    const payload = asRecord(await response.json())
+    const result = Array.isArray(payload?.result) ? payload.result : []
+    return result as TelegramUpdate[]
+  }
+
+  private apiUrl(method: string): string {
+    return `https://api.telegram.org/bot${this.token}/${method}`
+  }
+
+  private async sendTelegramMessage(chatId: number, text: string): Promise<void> {
+    const message = text.trim()
+    if (!message) return
+    await fetch(this.apiUrl('sendMessage'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: message }),
+    })
+  }
+
+  private async handleIncomingUpdate(update: TelegramUpdate): Promise<void> {
+    const message = update.message
+    const chatId = message?.chat?.id
+    const text = message?.text?.trim()
+    if (typeof chatId !== 'number' || !text) return
+
+    if (text === '/start') {
+      await this.sendTelegramMessage(
+        chatId,
+        'Telegram bridge is active. Send any message to forward it into your Codex thread. Use /newthread to start a new mapped thread.',
+      )
+      return
+    }
+
+    if (text === '/newthread') {
+      const threadId = await this.createThreadForChat(chatId)
+      await this.sendTelegramMessage(chatId, `Mapped to new thread: ${threadId}`)
+      return
+    }
+
+    const threadCommand = text.match(/^\/thread\s+(\S+)$/)
+    if (threadCommand) {
+      const threadId = threadCommand[1]
+      this.bindChatToThread(chatId, threadId)
+      await this.sendTelegramMessage(chatId, `Mapped to thread: ${threadId}`)
+      return
+    }
+
+    const threadId = await this.ensureThreadForChat(chatId)
+    await this.appServer.rpc('turn/start', {
+      threadId,
+      input: [{ type: 'text', text }],
+    })
+  }
+
+  private async createThreadForChat(chatId: number): Promise<string> {
+    const response = asRecord(await this.appServer.rpc('thread/start', { cwd: this.defaultCwd }))
+    const thread = asRecord(response?.thread)
+    const threadId = typeof thread?.id === 'string' ? thread.id : ''
+    if (!threadId) {
+      throw new Error('thread/start did not return thread id')
+    }
+    this.bindChatToThread(chatId, threadId)
+    return threadId
+  }
+
+  private async ensureThreadForChat(chatId: number): Promise<string> {
+    const existing = this.threadIdByChatId.get(chatId)
+    if (existing) return existing
+    return this.createThreadForChat(chatId)
+  }
+
+  private bindChatToThread(chatId: number, threadId: string): void {
+    const previousThreadId = this.threadIdByChatId.get(chatId)
+    if (previousThreadId && previousThreadId !== threadId) {
+      const previousSet = this.chatIdsByThreadId.get(previousThreadId)
+      previousSet?.delete(chatId)
+      if (previousSet && previousSet.size === 0) {
+        this.chatIdsByThreadId.delete(previousThreadId)
+      }
+    }
+    this.threadIdByChatId.set(chatId, threadId)
+    const chatIds = this.chatIdsByThreadId.get(threadId) ?? new Set<number>()
+    chatIds.add(chatId)
+    this.chatIdsByThreadId.set(threadId, chatIds)
+  }
+
+  private extractThreadId(notification: { method: string; params: unknown }): string {
+    const params = asRecord(notification.params)
+    if (!params) return ''
+    const directThreadId = typeof params.threadId === 'string' ? params.threadId : ''
+    if (directThreadId) return directThreadId
+    const turn = asRecord(params.turn)
+    const turnThreadId = typeof turn?.threadId === 'string' ? turn.threadId : ''
+    return turnThreadId
+  }
+
+  private extractTurnId(notification: { method: string; params: unknown }): string {
+    const params = asRecord(notification.params)
+    if (!params) return ''
+    const directTurnId = typeof params.turnId === 'string' ? params.turnId : ''
+    if (directTurnId) return directTurnId
+    const turn = asRecord(params.turn)
+    const turnId = typeof turn?.id === 'string' ? turn.id : ''
+    return turnId
+  }
+
+  private async handleNotification(notification: { method: string; params: unknown }): Promise<void> {
+    if (notification.method !== 'turn/completed') return
+    const threadId = this.extractThreadId(notification)
+    if (!threadId) return
+    const chatIds = this.chatIdsByThreadId.get(threadId)
+    if (!chatIds || chatIds.size === 0) return
+
+    const turnId = this.extractTurnId(notification)
+    const lastForwardedTurnId = this.lastForwardedTurnByThreadId.get(threadId)
+    if (turnId && lastForwardedTurnId === turnId) return
+
+    const assistantReply = await this.readLatestAssistantMessage(threadId)
+    if (!assistantReply) return
+    for (const chatId of chatIds) {
+      await this.sendTelegramMessage(chatId, assistantReply)
+    }
+    if (turnId) {
+      this.lastForwardedTurnByThreadId.set(threadId, turnId)
+    }
+  }
+
+  private async readLatestAssistantMessage(threadId: string): Promise<string> {
+    const response = asRecord(await this.appServer.rpc('thread/read', { threadId, includeTurns: true }))
+    const thread = asRecord(response?.thread)
+    const turns = Array.isArray(thread?.turns) ? thread.turns : []
+
+    for (let turnIndex = turns.length - 1; turnIndex >= 0; turnIndex -= 1) {
+      const turn = asRecord(turns[turnIndex])
+      const items = Array.isArray(turn?.items) ? turn.items : []
+      for (let itemIndex = items.length - 1; itemIndex >= 0; itemIndex -= 1) {
+        const item = asRecord(items[itemIndex])
+        if (item?.type === 'agentMessage') {
+          const text = typeof item.text === 'string' ? item.text.trim() : ''
+          if (text) return text
+        }
+      }
+    }
+    return ''
+  }
+}
+
 type CodexBridgeMiddleware = ((req: IncomingMessage, res: ServerResponse, next: () => void) => Promise<void>) & {
   dispose: () => void
   subscribeNotifications: (listener: (value: { method: string; params: unknown; atIso: string }) => void) => () => void
@@ -1204,6 +1419,7 @@ type CodexBridgeMiddleware = ((req: IncomingMessage, res: ServerResponse, next: 
 type SharedBridgeState = {
   appServer: AppServerProcess
   methodCatalog: MethodCatalog
+  telegramBridge: TelegramThreadBridge
 }
 
 const SHARED_BRIDGE_KEY = '__codexRemoteSharedBridge__'
@@ -1216,9 +1432,11 @@ function getSharedBridgeState(): SharedBridgeState {
   const existing = globalScope[SHARED_BRIDGE_KEY]
   if (existing) return existing
 
+  const appServer = new AppServerProcess()
   const created: SharedBridgeState = {
-    appServer: new AppServerProcess(),
+    appServer,
     methodCatalog: new MethodCatalog(),
+    telegramBridge: new TelegramThreadBridge(appServer),
   }
   globalScope[SHARED_BRIDGE_KEY] = created
   return created
@@ -1292,7 +1510,7 @@ async function buildThreadSearchIndex(appServer: AppServerProcess): Promise<Thre
 }
 
 export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
-  const { appServer, methodCatalog } = getSharedBridgeState()
+  const { appServer, methodCatalog, telegramBridge } = getSharedBridgeState()
   let threadSearchIndex: ThreadSearchIndex | null = null
   let threadSearchIndexPromise: Promise<ThreadSearchIndex> | null = null
 
@@ -1311,6 +1529,7 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
     return threadSearchIndexPromise
   }
   void initializeSkillsSyncOnStartup(appServer)
+  telegramBridge.start()
 
   const middleware = async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
     try {
@@ -1792,6 +2011,7 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
 
   middleware.dispose = () => {
     threadSearchIndex = null
+    telegramBridge.stop()
     appServer.dispose()
   }
   middleware.subscribeNotifications = (
