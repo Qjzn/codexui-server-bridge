@@ -1554,6 +1554,13 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
             setJson(res, 404, { error: 'No matching commit found for this user message' })
             return
           }
+          let resetTargetSha = ''
+          try {
+            resetTargetSha = await runCommandCapture('git', ['rev-parse', `${commitSha}^`], { cwd })
+          } catch {
+            setJson(res, 409, { error: 'Cannot rollback: matched commit has no parent commit' })
+            return
+          }
 
           let stashed = false
           if (await hasGitWorkingTreeChanges(cwd)) {
@@ -1562,8 +1569,8 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
             stashed = true
           }
 
-          await runCommand('git', ['reset', '--hard', commitSha], { cwd })
-          setJson(res, 200, { data: { reset: true, commitSha, stashed } })
+          await runCommand('git', ['reset', '--hard', resetTargetSha], { cwd })
+          setJson(res, 200, { data: { reset: true, commitSha, resetTargetSha, stashed } })
         } catch (error) {
           setJson(res, 500, { error: getErrorMessage(error, 'Failed to rollback worktree to user message commit') })
         }
