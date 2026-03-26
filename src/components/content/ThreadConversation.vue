@@ -419,6 +419,7 @@ const liveOverlayReasoningRef = ref<HTMLElement | null>(null)
 const modalImageUrl = ref('')
 const toolQuestionAnswers = ref<Record<string, string>>({})
 const toolQuestionOtherAnswers = ref<Record<string, string>>({})
+const localScrollState = ref<ThreadScrollState | null>(null)
 const BOTTOM_THRESHOLD_PX = 16
 type InlineSegment =
   | { kind: 'text'; value: string }
@@ -433,6 +434,7 @@ type MessageBlock =
 let scrollRestoreFrame = 0
 let bottomLockFrame = 0
 let bottomLockFramesLeft = 0
+let pendingSavedScrollRestore = true
 const trackedPendingImages = new WeakSet<HTMLImageElement>()
 const failedMarkdownImageKeys = ref<Set<string>>(new Set())
 
@@ -1195,17 +1197,27 @@ function isAtBottom(container: HTMLElement): boolean {
   return distance <= BOTTOM_THRESHOLD_PX
 }
 
-function emitScrollState(container: HTMLElement): void {
-  if (!props.activeThreadId) return
+function readScrollState(container: HTMLElement): ThreadScrollState {
   const maxScrollTop = Math.max(container.scrollHeight - container.clientHeight, 0)
   const scrollRatio = maxScrollTop > 0 ? Math.min(Math.max(container.scrollTop / maxScrollTop, 0), 1) : 1
+  return {
+    scrollTop: container.scrollTop,
+    isAtBottom: isAtBottom(container),
+    scrollRatio,
+  }
+}
+
+function resolveScrollState(): ThreadScrollState | null {
+  return localScrollState.value ?? props.scrollState
+}
+
+function emitScrollState(container: HTMLElement): void {
+  const nextState = readScrollState(container)
+  localScrollState.value = nextState
+  if (!props.activeThreadId) return
   emit('updateScrollState', {
     threadId: props.activeThreadId,
-    state: {
-      scrollTop: container.scrollTop,
-      isAtBottom: isAtBottom(container),
-      scrollRatio,
-    },
+    state: nextState,
   })
 }
 
@@ -1213,17 +1225,15 @@ function applySavedScrollState(): void {
   const container = conversationListRef.value
   if (!container) return
 
-  const savedState = props.scrollState
+  const savedState = resolveScrollState()
   if (!savedState || savedState.isAtBottom) {
     enforceBottomState()
     return
   }
 
   const maxScrollTop = Math.max(container.scrollHeight - container.clientHeight, 0)
-  const targetScrollTop =
-    typeof savedState.scrollRatio === 'number'
-      ? savedState.scrollRatio * maxScrollTop
-      : savedState.scrollTop
+  // Preserve the user's absolute reading position when new content streams in below.
+  const targetScrollTop = savedState.scrollTop
   container.scrollTop = Math.min(Math.max(targetScrollTop, 0), maxScrollTop)
   emitScrollState(container)
 }
@@ -1236,7 +1246,7 @@ function enforceBottomState(): void {
 }
 
 function shouldLockToBottom(): boolean {
-  const savedState = props.scrollState
+  const savedState = resolveScrollState()
   return !savedState || savedState.isAtBottom === true
 }
 
@@ -1284,14 +1294,23 @@ function bindPendingImageHandlers(): void {
   }
 }
 
-async function scheduleScrollRestore(): Promise<void> {
+async function scheduleScrollRestore(options: { restoreSavedState?: boolean } = {}): Promise<void> {
+  const shouldRestoreSavedState = options.restoreSavedState ?? pendingSavedScrollRestore
   await nextTick()
   if (scrollRestoreFrame) {
     cancelAnimationFrame(scrollRestoreFrame)
   }
   scrollRestoreFrame = requestAnimationFrame(() => {
     scrollRestoreFrame = 0
-    applySavedScrollState()
+    const container = conversationListRef.value
+    if (shouldRestoreSavedState) {
+      applySavedScrollState()
+      pendingSavedScrollRestore = false
+    } else if (shouldLockToBottom()) {
+      enforceBottomState()
+    } else if (container) {
+      emitScrollState(container)
+    }
     bindPendingImageHandlers()
     scheduleBottomLock()
   })
@@ -1319,10 +1338,11 @@ watch(
 watch(
   () => props.liveOverlay,
   async (overlay) => {
-    if (!overlay) return
-    await nextTick()
-    enforceBottomState()
-    scheduleBottomLock(8)
+    if (!overlay) {
+      await scheduleScrollRestore()
+      return
+    }
+    await scheduleScrollRestore()
   },
   { deep: true },
 )
@@ -1331,15 +1351,18 @@ watch(
   () => props.isLoading,
   async (loading) => {
     if (loading) return
-    await scheduleScrollRestore()
+    await scheduleScrollRestore({ restoreSavedState: true })
   },
 )
 
 watch(
   () => props.activeThreadId,
-  () => {
+  async () => {
+    pendingSavedScrollRestore = true
+    localScrollState.value = null
     modalImageUrl.value = ''
     failedMarkdownImageKeys.value = new Set()
+    await scheduleScrollRestore({ restoreSavedState: true })
   },
   { flush: 'post' },
 )
@@ -1414,6 +1437,7 @@ onBeforeUnmount(() => {
 
 .conversation-list {
   @apply h-full min-h-0 list-none m-0 px-2 sm:px-6 py-0 overflow-y-auto overflow-x-visible flex flex-col gap-2 sm:gap-3;
+  overscroll-behavior-y: contain;
 }
 
 .conversation-item {

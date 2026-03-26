@@ -30,7 +30,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useMobile } from '../../composables/useMobile'
 
 const props = withDefaults(
@@ -52,6 +52,7 @@ const SIDEBAR_WIDTH_KEY = 'codex-web-local.sidebar-width.v1'
 const MIN_SIDEBAR_WIDTH = 260
 const MAX_SIDEBAR_WIDTH = 620
 const DEFAULT_SIDEBAR_WIDTH = 320
+const DEFAULT_LAYOUT_HEIGHT = '100dvh'
 
 function clampSidebarWidth(value: number): number {
   return Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, value))
@@ -66,14 +67,41 @@ function loadSidebarWidth(): number {
 }
 
 const sidebarWidth = ref(loadSidebarWidth())
+const layoutHeight = ref(DEFAULT_LAYOUT_HEIGHT)
+
+function readLayoutHeight(): string {
+  if (typeof window === 'undefined') return DEFAULT_LAYOUT_HEIGHT
+  const viewportHeight = window.visualViewport?.height ?? window.innerHeight
+  return `${Math.max(Math.round(viewportHeight), 0)}px`
+}
+
+let layoutHeightFrame = 0
+
+function syncLayoutHeight(): void {
+  layoutHeight.value = readLayoutHeight()
+}
+
+function scheduleLayoutHeightSync(): void {
+  if (layoutHeightFrame) return
+  layoutHeightFrame = window.requestAnimationFrame(() => {
+    layoutHeightFrame = 0
+    syncLayoutHeight()
+  })
+}
+
 const layoutStyle = computed(() => {
+  const baseStyle = {
+    '--layout-height': layoutHeight.value,
+  }
   if (isMobile.value || props.isSidebarCollapsed) {
     return {
+      ...baseStyle,
       '--sidebar-width': '0px',
       '--layout-columns': 'minmax(0, 1fr)',
     }
   }
   return {
+    ...baseStyle,
     '--sidebar-width': `${sidebarWidth.value}px`,
     '--layout-columns': 'var(--sidebar-width) 1px minmax(0, 1fr)',
   }
@@ -103,6 +131,23 @@ function onResizeHandleMouseDown(event: MouseEvent): void {
   window.addEventListener('mousemove', onMouseMove)
   window.addEventListener('mouseup', onMouseUp)
 }
+
+onMounted(() => {
+  syncLayoutHeight()
+  window.addEventListener('resize', scheduleLayoutHeightSync)
+  window.visualViewport?.addEventListener('resize', scheduleLayoutHeightSync)
+  window.visualViewport?.addEventListener('scroll', scheduleLayoutHeightSync)
+})
+
+onUnmounted(() => {
+  if (layoutHeightFrame) {
+    cancelAnimationFrame(layoutHeightFrame)
+    layoutHeightFrame = 0
+  }
+  window.removeEventListener('resize', scheduleLayoutHeightSync)
+  window.visualViewport?.removeEventListener('resize', scheduleLayoutHeightSync)
+  window.visualViewport?.removeEventListener('scroll', scheduleLayoutHeightSync)
+})
 </script>
 
 <style scoped>
@@ -112,7 +157,16 @@ function onResizeHandleMouseDown(event: MouseEvent): void {
   @apply grid bg-slate-100 text-slate-900 overflow-hidden;
   height: 100vh;
   height: 100dvh;
+  height: var(--layout-height, 100dvh);
+  max-height: var(--layout-height, 100dvh);
   grid-template-columns: var(--layout-columns);
+}
+
+.desktop-layout.is-mobile {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  overscroll-behavior-y: none;
 }
 
 .desktop-sidebar {
@@ -130,6 +184,7 @@ function onResizeHandleMouseDown(event: MouseEvent): void {
 
 .desktop-main {
   @apply bg-white min-h-0 overflow-y-hidden overflow-x-visible;
+  overscroll-behavior-y: none;
 }
 
 .mobile-drawer-backdrop {

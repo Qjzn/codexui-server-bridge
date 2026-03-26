@@ -1,5 +1,17 @@
 @import "tailwindcss";
 
+html,
+body,
+#app {
+  min-height: 100%;
+  height: 100%;
+  overscroll-behavior-y: none;
+}
+
+body {
+  overflow: hidden;
+}
+
 :root.dark {
   color-scheme: dark;
 }
