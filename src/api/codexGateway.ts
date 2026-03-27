@@ -22,6 +22,7 @@ import {
   readThreadInProgressFromResponse,
 } from './normalizers/v2'
 import type { SpeedMode, UiMessage, UiProjectGroup } from '../types/codex'
+import { normalizePathForUi } from '../pathUtils.js'
 
 type CurrentModelConfig = {
   model: string
@@ -398,16 +399,17 @@ function normalizeWorkspaceRootsState(payload: unknown): WorkspaceRootsState {
   const labels: Record<string, string> = {}
   if (labelsRaw && typeof labelsRaw === 'object' && !Array.isArray(labelsRaw)) {
     for (const [key, value] of Object.entries(labelsRaw as Record<string, unknown>)) {
-      if (typeof key === 'string' && key.length > 0 && typeof value === 'string') {
-        labels[key] = value
+      const normalizedKey = typeof key === 'string' ? normalizePathForUi(key) : ''
+      if (normalizedKey.length > 0 && typeof value === 'string') {
+        labels[normalizedKey] = value
       }
     }
   }
 
   return {
-    order: normalizeArray(record.order),
+    order: normalizeArray(record.order).map((value) => normalizePathForUi(value)),
     labels,
-    active: normalizeArray(record.active),
+    active: normalizeArray(record.active).map((value) => normalizePathForUi(value)),
   }
 }
 
@@ -434,7 +436,11 @@ export async function createWorktree(sourceCwd: string): Promise<WorktreeCreateR
   if (!response.ok || !payload.data) {
     throw new Error(payload.error || 'Failed to create worktree')
   }
-  return payload.data
+  return {
+    ...payload.data,
+    cwd: normalizePathForUi(payload.data.cwd),
+    gitRoot: normalizePathForUi(payload.data.gitRoot),
+  }
 }
 
 export async function autoCommitWorktreeChanges(cwd: string, message: string): Promise<WorktreeAutoCommitResult> {
@@ -514,7 +520,7 @@ export async function openProjectRoot(path: string, options?: { createIfMissing?
     record.data && typeof record.data === 'object' && !Array.isArray(record.data)
       ? (record.data as Record<string, unknown>)
       : {}
-  const normalizedPath = typeof data.path === 'string' ? data.path.trim() : ''
+  const normalizedPath = typeof data.path === 'string' ? normalizePathForUi(data.path) : ''
   return normalizedPath
 }
 
@@ -536,7 +542,7 @@ export async function getProjectRootSuggestion(basePath: string): Promise<{ name
       : {}
   return {
     name: typeof data.name === 'string' ? data.name.trim() : '',
-    path: typeof data.path === 'string' ? data.path.trim() : '',
+    path: typeof data.path === 'string' ? normalizePathForUi(data.path) : '',
   }
 }
 

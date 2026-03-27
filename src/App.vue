@@ -319,6 +319,7 @@ import {
 import type { ReasoningEffort, SpeedMode, ThreadScrollState } from './types/codex'
 import type { ComposerDraftPayload, ThreadComposerExposed } from './components/content/ThreadComposer.vue'
 import type { GithubTipsScope, GithubTrendingProject, TelegramStatus } from './api/codexGateway'
+import { getPathLeafName, getPathParent } from './pathUtils.js'
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'codex-web-local.sidebar-collapsed.v1'
 const worktreeName = import.meta.env.VITE_WORKTREE_NAME ?? 'unknown'
@@ -1049,23 +1050,6 @@ async function loadTrendingProjects(): Promise<void> {
     isTrendingProjectsLoading.value = false
   }
 }
-
-function getPathParent(path: string): string {
-  const trimmed = path.trim().replace(/\/+$/, '')
-  if (!trimmed) return ''
-  const slashIndex = trimmed.lastIndexOf('/')
-  if (slashIndex <= 0) return ''
-  return trimmed.slice(0, slashIndex)
-}
-
-function getPathLeafName(path: string): string {
-  const trimmed = path.trim().replace(/\/+$/, '')
-  if (!trimmed) return ''
-  const slashIndex = trimmed.lastIndexOf('/')
-  if (slashIndex < 0) return trimmed
-  return trimmed.slice(slashIndex + 1)
-}
-
 function joinPath(parent: string, child: string): string {
   const normalizedParent = parent.trim().replace(/\/+$/, '')
   const normalizedChild = child.trim().replace(/^\/+/, '')

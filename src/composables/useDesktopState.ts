@@ -41,6 +41,7 @@ import type {
   UiServerRequestReply,
   UiThread,
 } from '../types/codex'
+import { normalizePathForUi, toProjectName } from '../pathUtils.js'
 
 function flattenThreads(groups: UiProjectGroup[]): UiThread[] {
   return groups.flatMap((group) => group.threads)
@@ -172,8 +173,10 @@ function loadProjectOrder(): string[] {
     if (!Array.isArray(parsed)) return []
     const order: string[] = []
     for (const item of parsed) {
-      if (typeof item === 'string' && item.length > 0 && !order.includes(item)) {
-        order.push(item)
+      if (typeof item !== 'string' || item.length === 0) continue
+      const normalizedItem = toProjectName(item)
+      if (normalizedItem.length > 0 && !order.includes(normalizedItem)) {
+        order.push(normalizedItem)
       }
     }
     return order
@@ -199,8 +202,9 @@ function loadProjectDisplayNames(): Record<string, string> {
 
     const displayNames: Record<string, string> = {}
     for (const [projectName, displayName] of Object.entries(parsed as Record<string, unknown>)) {
-      if (typeof projectName === 'string' && projectName.length > 0 && typeof displayName === 'string') {
-        displayNames[projectName] = displayName
+      const normalizedProjectName = typeof projectName === 'string' ? toProjectName(projectName) : ''
+      if (normalizedProjectName.length > 0 && typeof displayName === 'string') {
+        displayNames[normalizedProjectName] = displayName
       }
     }
     return displayNames
@@ -616,15 +620,8 @@ function mergeIncomingWithLocalInProgressThreads(
   return merged
 }
 
-function toProjectName(cwd: string): string {
-  const parts = cwd.split('/').filter(Boolean)
-  return parts.at(-1) || cwd || 'unknown-project'
-}
-
 function toProjectNameFromWorkspaceRoot(value: string): string {
-  const normalized = value.replace(/\\/gu, '/')
-  const parts = normalized.split('/').filter(Boolean)
-  return parts.at(-1) || normalized
+  return toProjectName(value)
 }
 
 function toOptimisticThreadTitle(message: string): string {
@@ -1036,7 +1033,7 @@ export function useDesktopState() {
 
   function insertOptimisticThread(threadId: string, cwd: string, firstMessageText: string): void {
     const nowIso = new Date().toISOString()
-    const normalizedCwd = cwd.trim()
+    const normalizedCwd = normalizePathForUi(cwd)
     const projectName = toProjectName(normalizedCwd)
     const nextThread: UiThread = {
       id: threadId,

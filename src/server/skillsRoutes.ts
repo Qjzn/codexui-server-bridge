@@ -5,6 +5,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { writeFile } from 'node:fs/promises'
+import { resolvePythonCommand, resolveSkillInstallerScriptPath } from '../commandResolution.js'
 
 type AppServerLike = {
   rpc(method: string, params: unknown): Promise<unknown>
@@ -51,18 +52,6 @@ function getCodexHomeDir(): string {
 
 function getSkillsInstallDir(): string {
   return join(getCodexHomeDir(), 'skills')
-}
-
-function resolveSkillInstallerScriptPath(): string {
-  const candidates = [
-    join(getCodexHomeDir(), 'skills', '.system', 'skill-installer', 'scripts', 'install-skill-from-github.py'),
-    join(homedir(), '.codex', 'skills', '.system', 'skill-installer', 'scripts', 'install-skill-from-github.py'),
-    join(homedir(), '.cursor', 'skills', '.system', 'skill-installer', 'scripts', 'install-skill-from-github.py'),
-  ]
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) return candidate
-  }
-  throw new Error(`Skill installer script not found. Checked: ${candidates.join(', ')}`)
 }
 
 const DEFAULT_COMMAND_TIMEOUT_MS = 120_000
@@ -1157,13 +1146,21 @@ export async function handleSkillsRoutes(
       }
       const localDir = await detectUserSkillsDir(appServer)
       await pullInstalledSkillsFolderFromRepo(state.githubToken, state.repoOwner, state.repoName)
-      const installerScript = resolveSkillInstallerScriptPath()
+      const installerScript = resolveSkillInstallerScriptPath(getCodexHomeDir())
+      if (!installerScript) {
+        throw new Error('Skill installer script not found')
+      }
+      const pythonCommand = resolvePythonCommand()
+      if (!pythonCommand) {
+        throw new Error('Python 3 is required to install skills')
+      }
       const localSkills = await scanInstalledSkillsFromDisk()
       for (const skill of remote) {
         const owner = skill.owner || uniqueOwnerByName.get(skill.name) || ''
         if (!owner) continue
         if (!localSkills.has(skill.name)) {
-          await runCommand('python3', [
+          await runCommand(pythonCommand.command, [
+            ...pythonCommand.args,
             installerScript,
             '--repo', `${HUB_SKILLS_OWNER}/${HUB_SKILLS_REPO}`,
             '--path', `skills/${owner}/${skill.name}`,
@@ -1237,7 +1234,14 @@ export async function handleSkillsRoutes(
         setJson(res, 400, { error: 'Missing owner or name' })
         return true
       }
-      const installerScript = resolveSkillInstallerScriptPath()
+      const installerScript = resolveSkillInstallerScriptPath(getCodexHomeDir())
+      if (!installerScript) {
+        throw new Error('Skill installer script not found')
+      }
+      const pythonCommand = resolvePythonCommand()
+      if (!pythonCommand) {
+        throw new Error('Python 3 is required to install skills')
+      }
       const installDest = await withTimeout(
         detectUserSkillsDir(appServer),
         10_000,
@@ -1247,7 +1251,8 @@ export async function handleSkillsRoutes(
       if (existsSync(skillDir)) {
         await rm(skillDir, { recursive: true, force: true })
       }
-      await runCommand('python3', [
+      await runCommand(pythonCommand.command, [
+        ...pythonCommand.args,
         installerScript,
         '--repo', `${HUB_SKILLS_OWNER}/${HUB_SKILLS_REPO}`,
         '--path', `skills/${owner}/${name}`,

@@ -12,7 +12,11 @@ import { createInterface } from 'node:readline'
 import { writeFile } from 'node:fs/promises'
 import { handleSkillsRoutes, initializeSkillsSyncOnStartup } from './skillsRoutes.js'
 import { TelegramThreadBridge } from './telegramThreadBridge.js'
-import { getSpawnInvocation, resolveCodexCommand } from '../utils/commandInvocation.js'
+import { getSpawnInvocation } from '../utils/commandInvocation.js'
+import {
+  resolveCodexCommand,
+  resolveRipgrepCommand,
+} from '../commandResolution.js'
 
 type JsonRpcCall = {
   jsonrpc: '2.0'
@@ -234,7 +238,13 @@ async function fetchGithubTrending(since: 'daily' | 'weekly' | 'monthly', limit:
 
 async function listFilesWithRipgrep(cwd: string): Promise<string[]> {
   return await new Promise<string[]>((resolve, reject) => {
-    const proc = spawn('rg', ['--files', '--hidden', '-g', '!.git', '-g', '!node_modules'], {
+    const ripgrepCommand = resolveRipgrepCommand()
+    if (!ripgrepCommand) {
+      reject(new Error('ripgrep (rg) is not available'))
+      return
+    }
+
+    const proc = spawn(ripgrepCommand, ['--files', '--hidden', '-g', '!.git', '-g', '!node_modules'], {
       cwd,
       env: process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -919,11 +929,19 @@ class AppServerProcess {
     'sandbox_mode="danger-full-access"',
   ]
 
+  private getCodexCommand(): string {
+    const codexCommand = resolveCodexCommand()
+    if (!codexCommand) {
+      throw new Error('Codex CLI is not available. Install @openai/codex or set CODEXUI_CODEX_COMMAND.')
+    }
+    return codexCommand
+  }
+
   private start(): void {
     if (this.process) return
 
     this.stopping = false
-    const invocation = getSpawnInvocation(resolveCodexCommand() ?? 'codex', this.appServerArgs)
+    const invocation = getSpawnInvocation(this.getCodexCommand(), this.appServerArgs)
     const proc = spawn(invocation.command, invocation.args, { stdio: ['pipe', 'pipe', 'pipe'] })
     this.process = proc
 
@@ -1204,7 +1222,13 @@ class MethodCatalog {
 
   private async runGenerateSchemaCommand(outDir: string): Promise<void> {
     await new Promise<void>((resolve, reject) => {
-      const invocation = getSpawnInvocation(resolveCodexCommand() ?? 'codex', ['app-server', 'generate-json-schema', '--out', outDir])
+      const codexCommand = resolveCodexCommand()
+      if (!codexCommand) {
+        reject(new Error('Codex CLI is not available. Install @openai/codex or set CODEXUI_CODEX_COMMAND.'))
+        return
+      }
+
+      const invocation = getSpawnInvocation(codexCommand, ['app-server', 'generate-json-schema', '--out', outDir])
       const process = spawn(invocation.command, invocation.args, {
         stdio: ['ignore', 'ignore', 'pipe'],
       })

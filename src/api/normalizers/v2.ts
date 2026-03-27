@@ -7,14 +7,10 @@ import type {
   UserInput,
 } from '../appServerDtos'
 import type { CommandExecutionData, UiFileAttachment, UiMessage, UiProjectGroup, UiThread } from '../../types/codex'
+import { normalizePathForComparison, normalizePathForUi, toProjectName } from '../../pathUtils.js'
 
 function toIso(seconds: number): string {
   return new Date(seconds * 1000).toISOString()
-}
-
-function toProjectName(cwd: string): string {
-  const parts = cwd.split('/').filter(Boolean)
-  return parts.at(-1) || cwd || 'unknown-project'
 }
 
 function toRawPayload(value: unknown): string {
@@ -200,20 +196,21 @@ function readThreadInProgress(summary: Thread): boolean {
 
 function toUiThread(summary: Thread): UiThread {
   const rawSummary = summary as Record<string, unknown>
-  const cwd = typeof rawSummary.cwd === 'string' ? rawSummary.cwd : summary.cwd
+  const cwd = normalizePathForUi(typeof rawSummary.cwd === 'string' ? rawSummary.cwd : summary.cwd)
+  const comparableCwd = normalizePathForComparison(cwd)
   const hasWorktree =
     rawSummary.isWorktree === true ||
     rawSummary.worktree === true ||
     rawSummary.worktreeId !== undefined ||
     rawSummary.worktreePath !== undefined ||
-    cwd.includes('/.codex/worktrees/') ||
-    cwd.includes('/.git/worktrees/')
+    comparableCwd.includes('/.codex/worktrees/') ||
+    comparableCwd.includes('/.git/worktrees/')
 
   return {
     id: summary.id,
     title: toThreadTitle(summary),
-    projectName: toProjectName(summary.cwd),
-    cwd: summary.cwd,
+    projectName: toProjectName(cwd),
+    cwd,
     hasWorktree,
     createdAtIso: toIso(summary.createdAt),
     updatedAtIso: toIso(summary.updatedAt),
