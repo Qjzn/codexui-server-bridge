@@ -139,6 +139,7 @@
                       target="_blank"
                       rel="noopener noreferrer"
                       :title="att.path"
+                      @contextmenu.prevent="onFileLinkContextMenu($event, att.path)"
                     >
                       {{ att.path }}
                     </a>
@@ -205,6 +206,7 @@
                             target="_blank"
                             rel="noopener noreferrer"
                             :title="segment.path"
+                            @contextmenu.prevent="onFileLinkContextMenu($event, segment.path)"
                           >
                             {{ segment.displayPath }}
                           </a>
@@ -306,11 +308,31 @@
         <img class="image-modal-image" :src="modalImageUrl" alt="Expanded message image" />
       </div>
     </div>
+
+    <div
+      v-if="isFileLinkContextMenuVisible"
+      ref="fileLinkContextMenuRef"
+      class="file-link-context-menu"
+      :style="fileLinkContextMenuStyle"
+      @click.stop
+    >
+      <button type="button" class="file-link-context-menu-item" @click="openFileLinkContextBrowse">
+        Open file
+      </button>
+      <button
+        v-if="fileLinkContextEditUrl"
+        type="button"
+        class="file-link-context-menu-item"
+        @click="openFileLinkContextEdit"
+      >
+        Edit file
+      </button>
+    </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import type { ThreadScrollState, UiLiveOverlay, UiMessage, UiServerRequest } from '../../types/codex'
 import IconTablerX from '../icons/IconTablerX.vue'
 import IconTablerArrowBackUp from '../icons/IconTablerArrowBackUp.vue'
@@ -417,6 +439,7 @@ const conversationListRef = ref<HTMLElement | null>(null)
 const bottomAnchorRef = ref<HTMLElement | null>(null)
 const liveOverlayReasoningRef = ref<HTMLElement | null>(null)
 const modalImageUrl = ref('')
+const fileLinkContextMenuRef = ref<HTMLElement | null>(null)
 const toolQuestionAnswers = ref<Record<string, string>>({})
 const toolQuestionOtherAnswers = ref<Record<string, string>>({})
 const localScrollState = ref<ThreadScrollState | null>(null)
@@ -437,6 +460,11 @@ let bottomLockFramesLeft = 0
 let pendingSavedScrollRestore = true
 const trackedPendingImages = new WeakSet<HTMLImageElement>()
 const failedMarkdownImageKeys = ref<Set<string>>(new Set())
+const isFileLinkContextMenuVisible = ref(false)
+const fileLinkContextMenuX = ref(0)
+const fileLinkContextMenuY = ref(0)
+const fileLinkContextBrowseUrl = ref('')
+const fileLinkContextEditUrl = ref('')
 
 type ParsedToolQuestion = {
   id: string
@@ -958,6 +986,62 @@ function toEditUrl(pathValue: string): string {
   return `/codex-local-edit${encodeURI(normalizedResolved)}`
 }
 
+const fileLinkContextMenuStyle = computed(() => ({
+  left: `${String(fileLinkContextMenuX.value)}px`,
+  top: `${String(fileLinkContextMenuY.value)}px`,
+}))
+
+function onFileLinkContextMenu(event: MouseEvent, pathValue: string): void {
+  const browseUrl = toBrowseUrl(pathValue)
+  if (browseUrl === '#') return
+  fileLinkContextBrowseUrl.value = browseUrl
+  const editUrl = toEditUrl(pathValue)
+  fileLinkContextEditUrl.value = editUrl === '#' ? '' : editUrl
+  fileLinkContextMenuX.value = event.clientX
+  fileLinkContextMenuY.value = event.clientY
+  isFileLinkContextMenuVisible.value = true
+}
+
+function closeFileLinkContextMenu(): void {
+  if (!isFileLinkContextMenuVisible.value) return
+  isFileLinkContextMenuVisible.value = false
+}
+
+function openFileLinkContextBrowse(): void {
+  const href = fileLinkContextBrowseUrl.value
+  closeFileLinkContextMenu()
+  if (!href || href === '#') return
+  window.open(href, '_blank', 'noopener,noreferrer')
+}
+
+function openFileLinkContextEdit(): void {
+  const href = fileLinkContextEditUrl.value
+  closeFileLinkContextMenu()
+  if (!href || href === '#') return
+  window.open(href, '_blank', 'noopener,noreferrer')
+}
+
+function onWindowPointerDownForFileLinkContextMenu(event: PointerEvent): void {
+  if (!isFileLinkContextMenuVisible.value) return
+  const menu = fileLinkContextMenuRef.value
+  if (!menu) {
+    closeFileLinkContextMenu()
+    return
+  }
+  const target = event.target
+  if (target instanceof Node && menu.contains(target)) return
+  closeFileLinkContextMenu()
+}
+
+function onWindowBlurForFileLinkContextMenu(): void {
+  closeFileLinkContextMenu()
+}
+
+function onWindowKeydownForFileLinkContextMenu(event: KeyboardEvent): void {
+  if (event.key !== 'Escape') return
+  closeFileLinkContextMenu()
+}
+
 function parseMessageBlocks(text: string): MessageBlock[] {
   if (!text.includes('![') || !text.includes('](')) {
     return [{ kind: 'text', value: text }]
@@ -1361,11 +1445,25 @@ watch(
     pendingSavedScrollRestore = true
     localScrollState.value = null
     modalImageUrl.value = ''
+    closeFileLinkContextMenu()
     failedMarkdownImageKeys.value = new Set()
     await scheduleScrollRestore({ restoreSavedState: true })
   },
   { flush: 'post' },
 )
+
+watch(isFileLinkContextMenuVisible, (isVisible) => {
+  if (isVisible) {
+    window.addEventListener('pointerdown', onWindowPointerDownForFileLinkContextMenu, { capture: true })
+    window.addEventListener('blur', onWindowBlurForFileLinkContextMenu)
+    window.addEventListener('keydown', onWindowKeydownForFileLinkContextMenu)
+    return
+  }
+
+  window.removeEventListener('pointerdown', onWindowPointerDownForFileLinkContextMenu, { capture: true })
+  window.removeEventListener('blur', onWindowBlurForFileLinkContextMenu)
+  window.removeEventListener('keydown', onWindowKeydownForFileLinkContextMenu)
+})
 
 function onConversationScroll(): void {
   const container = conversationListRef.value
@@ -1417,6 +1515,9 @@ onBeforeUnmount(() => {
   if (bottomLockFrame) {
     cancelAnimationFrame(bottomLockFrame)
   }
+  window.removeEventListener('pointerdown', onWindowPointerDownForFileLinkContextMenu, { capture: true })
+  window.removeEventListener('blur', onWindowBlurForFileLinkContextMenu)
+  window.removeEventListener('keydown', onWindowKeydownForFileLinkContextMenu)
 })
 </script>
 
@@ -1645,6 +1746,14 @@ onBeforeUnmount(() => {
 
 .message-file-edit-link:hover {
   @apply bg-transparent text-slate-900;
+}
+
+.file-link-context-menu {
+  @apply fixed z-50 min-w-28 rounded-md border border-zinc-200 bg-white p-1 shadow-lg;
+}
+
+.file-link-context-menu-item {
+  @apply block w-full rounded px-2 py-1 text-left text-xs text-zinc-700 hover:bg-zinc-100;
 }
 
 .message-stack[data-role='user'] {
