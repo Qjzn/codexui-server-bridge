@@ -32,6 +32,7 @@
 
 - For merge conflicts in `package.json` that only affect the `"version"` field, always ignore the conflict and keep the stashed/local `package.json` version value.
 - Do not block merge completion on `package.json` version-only conflicts.
+- For any merge/rebase conflict involving `package.json`, always resolve by taking the current local/stashed `package.json` entirely (full file replacement), then continue merge.
 
 ## Commit After Each Task
 
