@@ -40,6 +40,19 @@
 - Do not batch multiple tasks into a single commit.
 - Each commit message should describe the specific change made.
 
+## Tests Documentation Rule (MANDATORY)
+
+- After every feature implementation, update `tests.md` in the repository root.
+- Add a new section describing how to test the feature manually.
+- Each test section must include:
+  - feature/change name
+  - prerequisites/setup
+  - exact step-by-step actions
+  - expected result(s)
+  - rollback/cleanup notes (if applicable)
+- Keep existing test cases; append or update only what is needed for the new feature.
+- Do not mark a feature task complete until `tests.md` is updated.
+
 ## Completion Verification Requirement (MANDATORY)
 
 - Test changes before reporting completion when feasible.
