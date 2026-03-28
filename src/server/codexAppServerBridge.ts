@@ -784,15 +784,6 @@ async function readTelegramBridgeConfig(): Promise<TelegramBridgeConfigState> {
     const payload = asRecord(JSON.parse(raw)) ?? {}
     return normalizeTelegramBridgeConfig(payload)
   } catch {
-    // Fall back to legacy storage in global state for backward compatibility.
-  }
-
-  const statePath = getCodexGlobalStatePath()
-  try {
-    const raw = await readFile(statePath, 'utf8')
-    const payload = asRecord(JSON.parse(raw)) ?? {}
-    return normalizeTelegramBridgeConfig(payload['telegram-bridge'])
-  } catch {
     return { botToken: '' }
   }
 }
@@ -802,21 +793,6 @@ async function writeTelegramBridgeConfig(nextState: TelegramBridgeConfigState): 
   await writeFile(telegramConfigPath, JSON.stringify({
     botToken: nextState.botToken.trim(),
   }), 'utf8')
-
-  // Best-effort cleanup of legacy inlined config from global state.
-  const statePath = getCodexGlobalStatePath()
-  let payload: Record<string, unknown> = {}
-  try {
-    const raw = await readFile(statePath, 'utf8')
-    payload = asRecord(JSON.parse(raw)) ?? {}
-  } catch {
-    payload = {}
-  }
-
-  if ('telegram-bridge' in payload) {
-    delete payload['telegram-bridge']
-    await writeFile(statePath, JSON.stringify(payload), 'utf8')
-  }
 }
 
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {

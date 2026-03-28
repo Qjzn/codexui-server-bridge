@@ -30,13 +30,11 @@ This file tracks manual regression and feature verification steps.
 1. In the app UI, open Telegram connection and submit a bot token.
 2. Verify file `~/.codex/telegram-bridge.json` exists.
 3. Open `~/.codex/telegram-bridge.json` and confirm it contains a `botToken` field.
-4. If `~/.codex/.codex-global-state.json` exists, confirm `telegram-bridge` key is absent after configure.
-5. Restart the app server and call Telegram status endpoint from UI to confirm it still reports configured.
+4. Restart the app server and call Telegram status endpoint from UI to confirm it still reports configured.
 
 #### Expected Results
 - Telegram token is persisted in `~/.codex/telegram-bridge.json`.
 - Telegram bridge remains configured after restart.
-- Legacy `telegram-bridge` key is not re-written into `~/.codex/.codex-global-state.json`.
 
 #### Rollback/Cleanup
 - Remove `~/.codex/telegram-bridge.json` to clear saved Telegram token.
