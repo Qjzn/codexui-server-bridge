@@ -151,3 +151,24 @@ This file tracks manual regression and feature verification steps.
 
 #### Rollback/Cleanup
 - Reset appearance to the previous user preference.
+
+### Feature: Markdown file links with backticks and parentheses render correctly
+
+#### Prerequisites
+- App is running from this repository.
+- An active thread is open.
+- Local file exists at `/root/New Project (1)/qwe.txt`.
+
+#### Steps
+1. Send a message containing: `Done. Created [`/root/New Project (1)/qwe.txt`](/root/New Project (1)/qwe.txt) with content:`.
+2. In the rendered assistant message, click the `/root/New Project (1)/qwe.txt` link.
+3. Right-click the same link and choose `Copy link` from the context menu.
+4. Paste the copied link into a text field and inspect it.
+
+#### Expected Results
+- The markdown link renders as one clickable file link (not split into partial tokens).
+- Clicking opens the local browse route for the full file path.
+- Copied link includes the full encoded path and still resolves to the same file.
+
+#### Rollback/Cleanup
+- Delete `/root/New Project (1)/qwe.txt` if it was created only for this test.

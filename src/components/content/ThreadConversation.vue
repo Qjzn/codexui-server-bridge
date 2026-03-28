@@ -456,6 +456,11 @@ type ParsedToolQuestion = {
   options: string[]
 }
 
+type TextRange = {
+  start: number
+  end: number
+}
+
 function isFilePath(value: string): boolean {
   if (!value) return false
   if (value.endsWith('/') || value.endsWith('\\')) return false
@@ -803,15 +808,43 @@ function splitTextByFileUrls(text: string): InlineSegment[] {
   return segments
 }
 
+function collectMarkdownLinkRanges(text: string): TextRange[] {
+  const ranges: TextRange[] = []
+  let cursor = 0
+
+  while (cursor < text.length) {
+    const openBracket = text.indexOf('[', cursor)
+    if (openBracket < 0) break
+    const markdownToken = readMarkdownLinkAt(text, openBracket)
+    if (!markdownToken) {
+      cursor = openBracket + 1
+      continue
+    }
+    ranges.push({ start: openBracket, end: markdownToken.end })
+    cursor = markdownToken.end
+  }
+
+  return ranges
+}
+
+function isIndexInsideRanges(index: number, ranges: TextRange[]): boolean {
+  for (const range of ranges) {
+    if (index < range.start) return false
+    if (index < range.end) return true
+  }
+  return false
+}
+
 function parseInlineSegments(text: string): InlineSegment[] {
   if (!text.includes('`')) return splitTextByFileUrls(text)
+  const markdownLinkRanges = collectMarkdownLinkRanges(text)
 
   const segments: InlineSegment[] = []
   let cursor = 0
   let textStart = 0
 
   while (cursor < text.length) {
-    if (text[cursor] !== '`') {
+    if (text[cursor] !== '`' || isIndexInsideRanges(cursor, markdownLinkRanges)) {
       cursor += 1
       continue
     }
@@ -827,6 +860,10 @@ function parseInlineSegments(text: string): InlineSegment[] {
     while (searchFrom < text.length) {
       const candidate = text.indexOf(delimiter, searchFrom)
       if (candidate < 0) break
+      if (isIndexInsideRanges(candidate, markdownLinkRanges)) {
+        searchFrom = candidate + 1
+        continue
+      }
 
       const hasBacktickBefore = candidate > 0 && text[candidate - 1] === '`'
       const hasBacktickAfter =
