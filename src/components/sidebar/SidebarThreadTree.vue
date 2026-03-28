@@ -26,7 +26,7 @@
               </span>
             </button>
             <template #right>
-              <span class="thread-row-time">{{ formatRelative(thread.createdAtIso || thread.updatedAtIso) }}</span>
+              <span class="thread-row-time">{{ formatRelativeThread(thread) }}</span>
             </template>
             <template #right-hover>
               <div :ref="(el) => setThreadMenuWrapRef(thread.id, el)" class="thread-menu-wrap">
@@ -132,7 +132,7 @@
             </span>
           </button>
           <template #right>
-            <span class="thread-row-time">{{ formatRelative(thread.createdAtIso || thread.updatedAtIso) }}</span>
+            <span class="thread-row-time">{{ formatRelativeThread(thread) }}</span>
           </template>
           <template #right-hover>
             <div :ref="(el) => setThreadMenuWrapRef(thread.id, el)" class="thread-menu-wrap">
@@ -286,7 +286,7 @@
                   </span>
                 </button>
                 <template #right>
-                  <span class="thread-row-time">{{ formatRelative(thread.createdAtIso || thread.updatedAtIso) }}</span>
+                  <span class="thread-row-time">{{ formatRelativeThread(thread) }}</span>
                 </template>
                 <template #right-hover>
                   <div :ref="(el) => setThreadMenuWrapRef(thread.id, el)" class="thread-menu-wrap">
@@ -528,6 +528,7 @@ const matchedThreadIdSet = computed(() => {
   if (!props.searchMatchedThreadIds) return null
   return new Set(props.searchMatchedThreadIds)
 })
+const pinnedThreadIdSet = computed(() => new Set(pinnedThreadIds.value))
 
 function threadMatchesSearch(thread: UiThread): boolean {
   if (!isSearchActive.value) return true
@@ -556,7 +557,7 @@ const globalThreads = computed<UiThread[]>(() => {
 
   for (const group of sourceGroups) {
     for (const thread of group.threads) {
-      if (isPinned(thread.id)) continue
+      if (pinnedThreadIdSet.value.has(thread.id)) continue
       rows.push(thread)
     }
   }
@@ -577,6 +578,33 @@ const threadById = computed(() => {
     }
   }
 
+  return map
+})
+const threadProjectNameById = computed(() => {
+  const map = new Map<string, string>()
+  for (const group of props.groups) {
+    for (const thread of group.threads) {
+      map.set(thread.id, group.projectName)
+    }
+  }
+  return map
+})
+const unpinnedThreadsByProjectName = computed(() => {
+  const map = new Map<string, UiThread[]>()
+  for (const group of props.groups) {
+    const rows = group.threads.filter((thread) => !pinnedThreadIdSet.value.has(thread.id))
+    map.set(group.projectName, rows)
+  }
+  return map
+})
+const threadTimestampById = computed(() => {
+  const map = new Map<string, number>()
+  for (const group of props.groups) {
+    for (const thread of group.threads) {
+      const timestamp = new Date(thread.updatedAtIso || thread.createdAtIso).getTime()
+      map.set(thread.id, timestamp)
+    }
+  }
   return map
 })
 
@@ -639,8 +667,7 @@ const groupsContainerStyle = computed<Record<string, string>>(() => {
   }
 })
 
-function formatRelative(value: string): string {
-  const timestamp = new Date(value).getTime()
+function formatRelative(timestamp: number): string {
   if (Number.isNaN(timestamp)) return 'n/a'
 
   const diffMs = Math.abs(Date.now() - timestamp)
@@ -656,8 +683,16 @@ function formatRelative(value: string): string {
   return `${days}d`
 }
 
+function formatRelativeThread(thread: UiThread): string {
+  const timestamp = threadTimestampById.value.get(thread.id)
+  if (typeof timestamp === 'number') {
+    return formatRelative(timestamp)
+  }
+  return formatRelative(new Date(thread.updatedAtIso || thread.createdAtIso).getTime())
+}
+
 function isPinned(threadId: string): boolean {
-  return pinnedThreadIds.value.includes(threadId)
+  return pinnedThreadIdSet.value.has(threadId)
 }
 
 function togglePin(threadId: string): void {
@@ -1226,7 +1261,7 @@ function projectGroupStyle(projectName: string): Record<string, string> | undefi
   const drag = activeProjectDrag.value
   const targetTop = layoutTopByProject.value[projectName] ?? 0
   const openThreadMenuProjectName = openThreadMenuId.value
-    ? props.groups.find((group) => group.threads.some((thread) => thread.id === openThreadMenuId.value))?.projectName ?? ''
+    ? (threadProjectNameById.value.get(openThreadMenuId.value) ?? '')
     : ''
   const shouldElevateForMenu =
     openProjectMenuId.value === projectName || openThreadMenuProjectName === projectName
@@ -1259,7 +1294,7 @@ function projectGroupStyle(projectName: string): Record<string, string> | undefi
 }
 
 function projectThreads(group: UiProjectGroup): UiThread[] {
-  return group.threads.filter((thread) => !isPinned(thread.id))
+  return unpinnedThreadsByProjectName.value.get(group.projectName) ?? []
 }
 
 function visibleThreads(group: UiProjectGroup): UiThread[] {
