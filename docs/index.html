@@ -12,26 +12,32 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦞</text></svg>" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Space+Grotesk:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --bg: #08080c;
-    --surface: #0f0f15;
-    --surface-raised: #151520;
-    --border: #1c1c2a;
-    --border-glow: #2a1a10;
-    --text: #e8e4df;
-    --text-dim: #8a8680;
-    --amber: #e8941a;
-    --amber-soft: #c4782a;
-    --crimson: #c93535;
-    --crimson-deep: #8a1f1f;
-    --cream: #f0e6d6;
-    --mono: 'DM Mono', 'SF Mono', monospace;
-    --display: 'Instrument Serif', Georgia, serif;
-    --body: 'Syne', sans-serif;
+    --bg: #050507;
+    --surface: #0a0a10;
+    --surface-raised: #111118;
+    --surface-glow: #14141f;
+    --border: #1a1a2e;
+    --border-bright: #252540;
+    --text: #e4e0db;
+    --text-dim: #706c66;
+    --text-muted: #4a4844;
+    --orange: #ff6b2b;
+    --orange-soft: #e85d20;
+    --orange-glow: rgba(255, 107, 43, .12);
+    --red: #ff3333;
+    --red-deep: #991111;
+    --cream: #faf4eb;
+    --green: #00ff88;
+    --green-dim: #00cc6a;
+    --mono: 'JetBrains Mono', 'SF Mono', monospace;
+    --display: 'Playfair Display', Georgia, serif;
+    --heading: 'Outfit', sans-serif;
+    --body: 'Outfit', sans-serif;
   }
 
   html { scroll-behavior: smooth; }
@@ -45,173 +51,413 @@
     -webkit-font-smoothing: antialiased;
   }
 
-  a { color: var(--amber); text-decoration: none; transition: color .2s; }
+  a { color: var(--orange); text-decoration: none; transition: all .25s ease; }
   a:hover { color: var(--cream); }
 
   .grain {
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 9999;
-    opacity: .035;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    position: fixed; inset: 0; pointer-events: none; z-index: 9999; opacity: .03;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* ─── NAV BAR ─── */
+  .nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1rem 2rem;
+    background: rgba(5, 5, 7, .85);
+    backdrop-filter: blur(20px) saturate(1.6);
+    border-bottom: 1px solid rgba(26, 26, 46, .5);
+  }
+
+  .nav-brand {
+    font-family: var(--heading);
+    font-weight: 800;
+    font-size: 1.3rem;
+    color: var(--cream);
+    letter-spacing: -.02em;
+    display: flex; align-items: center; gap: .5rem;
+  }
+
+  .nav-brand span { font-size: 1.4rem; }
+
+  .nav-links { display: flex; gap: 1.5rem; align-items: center; }
+  .nav-links a {
+    font-family: var(--mono);
+    font-size: .72rem;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: var(--text-dim);
+    transition: color .2s;
+  }
+  .nav-links a:hover { color: var(--orange); }
+
+  .nav-cta {
+    background: var(--orange) !important;
+    color: #000 !important;
+    padding: .45rem 1.1rem;
+    border-radius: 6px;
+    font-weight: 600 !important;
+    font-size: .72rem !important;
+    letter-spacing: .05em !important;
+    text-transform: uppercase !important;
+  }
+  .nav-cta:hover {
+    background: var(--cream) !important;
+    color: #000 !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px var(--orange-glow);
+  }
+
+  /* ─── ANNOUNCEMENT BANNER ─── */
+  .announcement {
+    margin-top: 60px;
+    text-align: center;
+    padding: .65rem 1rem;
+    background: linear-gradient(90deg, transparent, rgba(255,107,43,.06), rgba(255,107,43,.12), rgba(255,107,43,.06), transparent);
+    border-bottom: 1px solid rgba(255,107,43,.15);
+    font-family: var(--mono);
+    font-size: .72rem;
+    letter-spacing: .08em;
+    color: var(--text-dim);
+  }
+  .announcement a {
+    color: var(--orange);
+    font-weight: 600;
   }
 
   /* ─── HERO ─── */
   .hero {
     position: relative;
     min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
     text-align: center;
-    padding: 4rem 1.5rem;
+    padding: 8rem 1.5rem 6rem;
     overflow: hidden;
   }
 
   .hero::before {
     content: '';
     position: absolute;
-    top: -30%;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 140%;
-    height: 80%;
-    background: radial-gradient(ellipse at center, rgba(232, 148, 26, .06) 0%, rgba(201, 53, 53, .03) 40%, transparent 70%);
+    top: -40%; left: 50%; transform: translateX(-50%);
+    width: 160%; height: 90%;
+    background:
+      radial-gradient(ellipse 60% 50% at 35% 40%, rgba(255,107,43,.08) 0%, transparent 60%),
+      radial-gradient(ellipse 40% 60% at 70% 30%, rgba(255,51,51,.05) 0%, transparent 50%),
+      radial-gradient(ellipse 80% 40% at 50% 80%, rgba(0,255,136,.03) 0%, transparent 50%);
     pointer-events: none;
   }
 
   .hero::after {
     content: '';
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent 0%, var(--border-glow) 30%, var(--amber-soft) 50%, var(--border-glow) 70%, transparent 100%);
+    position: absolute; bottom: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--orange-soft), transparent);
+    opacity: .4;
+  }
+
+  .hero-badge {
+    display: inline-flex; align-items: center; gap: .5rem;
+    padding: .4rem 1.2rem .4rem .8rem;
+    border: 1px solid var(--border-bright);
+    border-radius: 100px;
+    font-family: var(--mono);
+    font-size: .68rem;
+    color: var(--text-dim);
+    letter-spacing: .05em;
+    margin-bottom: 2.5rem;
+    background: rgba(20,20,31,.6);
+    backdrop-filter: blur(10px);
+  }
+  .hero-badge .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .4; }
   }
 
   .hero-claw {
-    font-size: clamp(4rem, 12vw, 8rem);
+    font-size: clamp(5rem, 14vw, 10rem);
     line-height: 1;
-    margin-bottom: 1rem;
-    animation: float 6s ease-in-out infinite;
-    filter: drop-shadow(0 0 40px rgba(232, 148, 26, .15));
+    margin-bottom: 1.5rem;
+    animation: float 5s ease-in-out infinite;
+    filter: drop-shadow(0 0 60px rgba(255,107,43,.2)) drop-shadow(0 0 120px rgba(255,107,43,.08));
   }
 
   @keyframes float {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-12px); }
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    25% { transform: translateY(-8px) rotate(-2deg); }
+    75% { transform: translateY(-14px) rotate(2deg); }
   }
 
   .hero h1 {
     font-family: var(--display);
-    font-size: clamp(3.5rem, 10vw, 7rem);
-    font-weight: 400;
-    letter-spacing: -.03em;
-    line-height: .9;
+    font-size: clamp(4rem, 12vw, 8.5rem);
+    font-weight: 900;
+    letter-spacing: -.04em;
+    line-height: .88;
     color: var(--cream);
-    margin-bottom: .75rem;
+    margin-bottom: 1rem;
   }
 
   .hero h1 em {
     font-style: italic;
-    color: var(--amber);
+    font-weight: 400;
+    background: linear-gradient(135deg, var(--orange) 0%, #ff4444 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero-tagline {
+    font-family: var(--heading);
+    font-size: clamp(1.15rem, 2.5vw, 1.6rem);
+    font-weight: 300;
+    color: var(--text);
+    max-width: 600px;
+    margin-bottom: .75rem;
+    line-height: 1.5;
+    letter-spacing: -.01em;
   }
 
   .hero-sub {
     font-family: var(--mono);
-    font-size: clamp(.75rem, 1.4vw, .9rem);
-    color: var(--text-dim);
+    font-size: .72rem;
+    color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: .2em;
-    margin-bottom: 2.5rem;
-  }
-
-  .hero-desc {
-    max-width: 560px;
-    font-size: clamp(1rem, 2vw, 1.15rem);
-    color: var(--text-dim);
     margin-bottom: 3rem;
-    line-height: 1.75;
   }
 
-  .hero-desc strong { color: var(--text); font-weight: 600; }
-
-  .cta-group { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
+  .cta-group {
+    display: flex; gap: .75rem; flex-wrap: wrap; justify-content: center;
+    margin-bottom: 3rem;
+  }
 
   .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: .6rem;
-    padding: .85rem 2rem;
-    border-radius: 4px;
-    font-family: var(--body);
-    font-weight: 600;
-    font-size: .95rem;
-    letter-spacing: .02em;
-    transition: all .25s ease;
+    display: inline-flex; align-items: center; gap: .6rem;
+    padding: .9rem 2rem;
+    border-radius: 8px;
+    font-family: var(--heading);
+    font-weight: 700;
+    font-size: .88rem;
+    letter-spacing: .01em;
+    transition: all .3s cubic-bezier(.4,0,.2,1);
     cursor: pointer;
     border: none;
+    position: relative;
+    overflow: hidden;
   }
 
   .btn-primary {
-    background: var(--amber);
-    color: #080808;
+    background: linear-gradient(135deg, var(--orange) 0%, #ff4444 100%);
+    color: #000;
+    box-shadow: 0 4px 24px var(--orange-glow), inset 0 1px 0 rgba(255,255,255,.2);
   }
   .btn-primary:hover {
-    background: var(--cream);
-    color: #080808;
-    transform: translateY(-2px);
-    box-shadow: 0 8px 30px rgba(232, 148, 26, .25);
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 0 12px 40px rgba(255,107,43,.35), inset 0 1px 0 rgba(255,255,255,.2);
+    color: #000;
+  }
+
+  .btn-demo {
+    background: linear-gradient(135deg, var(--green-dim) 0%, #00aa55 100%);
+    color: #000;
+    box-shadow: 0 4px 24px rgba(0,255,136,.12), inset 0 1px 0 rgba(255,255,255,.2);
+  }
+  .btn-demo:hover {
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 0 12px 40px rgba(0,255,136,.3), inset 0 1px 0 rgba(255,255,255,.2);
+    color: #000;
   }
 
   .btn-ghost {
-    background: transparent;
+    background: rgba(255,255,255,.04);
     color: var(--text);
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-bright);
+    backdrop-filter: blur(10px);
   }
   .btn-ghost:hover {
-    border-color: var(--amber-soft);
-    color: var(--amber);
-    transform: translateY(-2px);
+    border-color: var(--orange);
+    color: var(--orange);
+    transform: translateY(-3px);
+    background: rgba(255,107,43,.06);
+  }
+
+  /* ─── STATS BAR ─── */
+  .stats-bar {
+    display: flex; gap: 3rem; justify-content: center; flex-wrap: wrap;
+    padding: 2.5rem 1rem;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    background: rgba(10,10,16,.5);
+  }
+
+  .stat {
+    text-align: center;
+  }
+  .stat-num {
+    font-family: var(--display);
+    font-size: 2.2rem;
+    font-weight: 900;
+    color: var(--cream);
+    line-height: 1;
+    margin-bottom: .25rem;
+  }
+  .stat-num .accent { color: var(--orange); }
+  .stat-label {
+    font-family: var(--mono);
+    font-size: .65rem;
+    text-transform: uppercase;
+    letter-spacing: .15em;
+    color: var(--text-muted);
   }
 
   /* ─── SECTION ─── */
   .section {
-    max-width: 1000px;
+    max-width: 1080px;
     margin: 0 auto;
-    padding: 6rem 1.5rem;
+    padding: 7rem 1.5rem;
   }
 
   .section-label {
-    font-family: var(--mono);
-    font-size: .75rem;
-    text-transform: uppercase;
-    letter-spacing: .25em;
-    color: var(--amber-soft);
+    font-family: var(--heading);
+    font-weight: 700;
+    font-size: .88rem;
+    color: var(--orange);
     margin-bottom: .75rem;
+    display: flex; align-items: center; gap: .5rem;
+  }
+  .section-label::before {
+    content: '\203A';
+    font-size: 1.2rem;
+    font-weight: 800;
+    line-height: 1;
   }
 
   .section h2 {
     font-family: var(--display);
-    font-size: clamp(2rem, 5vw, 3.2rem);
-    font-weight: 400;
+    font-size: clamp(2.2rem, 6vw, 3.8rem);
+    font-weight: 900;
     color: var(--cream);
-    margin-bottom: 1.5rem;
-    line-height: 1.1;
+    margin-bottom: 1rem;
+    line-height: 1.05;
+    letter-spacing: -.03em;
   }
 
-  .section h2 em { font-style: italic; color: var(--amber); }
+  .section h2 em {
+    font-style: italic;
+    font-weight: 400;
+    background: linear-gradient(135deg, var(--orange) 0%, #ff4444 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
 
   .section-intro {
     max-width: 640px;
     color: var(--text-dim);
-    font-size: 1.05rem;
+    font-size: 1.1rem;
     line-height: 1.75;
-    margin-bottom: 3rem;
+    margin-bottom: 3.5rem;
+    font-weight: 300;
   }
+
+  /* ─── DEMO SECTION ─── */
+  .demo-section {
+    position: relative;
+    padding: 5rem 0;
+    overflow: hidden;
+  }
+  .demo-section::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg, transparent 0%, rgba(255,107,43,.03) 30%, rgba(0,255,136,.02) 70%, transparent 100%);
+    pointer-events: none;
+  }
+  .demo-inner {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+    text-align: center;
+  }
+  .demo-inner h2 {
+    font-family: var(--display);
+    font-size: clamp(2rem, 5vw, 3.2rem);
+    font-weight: 900;
+    color: var(--cream);
+    margin-bottom: .75rem;
+    letter-spacing: -.03em;
+  }
+  .demo-inner h2 em {
+    font-style: italic;
+    font-weight: 400;
+    background: linear-gradient(135deg, var(--green) 0%, var(--green-dim) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .demo-desc {
+    color: var(--text-dim);
+    font-size: 1.05rem;
+    margin-bottom: 2.5rem;
+    font-weight: 300;
+  }
+  .demo-frame-wrap {
+    position: relative;
+    max-width: 900px;
+    margin: 0 auto;
+    border-radius: 16px;
+    border: 1px solid var(--border-bright);
+    overflow: hidden;
+    background: var(--surface);
+    box-shadow:
+      0 0 0 1px rgba(255,107,43,.05),
+      0 20px 60px rgba(0,0,0,.5),
+      0 0 100px rgba(255,107,43,.06);
+  }
+  .demo-frame-bar {
+    display: flex; align-items: center; gap: .5rem;
+    padding: .75rem 1.2rem;
+    background: var(--surface-raised);
+    border-bottom: 1px solid var(--border);
+  }
+  .demo-frame-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .demo-frame-dot:nth-child(1) { background: #ff5f57; }
+  .demo-frame-dot:nth-child(2) { background: #ffbd2e; }
+  .demo-frame-dot:nth-child(3) { background: #28c840; }
+  .demo-frame-url {
+    flex: 1; text-align: center;
+    font-family: var(--mono);
+    font-size: .68rem;
+    color: var(--text-muted);
+    letter-spacing: .03em;
+  }
+  .demo-frame-wrap iframe {
+    width: 100%;
+    height: 520px;
+    border: none;
+    background: #111;
+  }
+
+  /* ─── SCREENSHOTS ─── */
+  .screenshots-grid {
+    display: flex; gap: 1.5rem; justify-content: center; flex-wrap: wrap; margin-top: 2.5rem;
+  }
+  .screenshots-grid img {
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    box-shadow: 0 12px 48px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.03);
+    transition: transform .4s cubic-bezier(.4,0,.2,1), box-shadow .4s ease;
+  }
+  .screenshots-grid img:hover {
+    transform: translateY(-6px) scale(1.02);
+    box-shadow: 0 20px 60px rgba(0,0,0,.7), 0 0 40px var(--orange-glow);
+  }
+  .screenshot-desktop { width: min(440px, 95vw); }
+  .screenshot-mobile { width: min(220px, 44vw); }
 
   /* ─── FEATURE GRID ─── */
   .feat-grid {
@@ -220,29 +466,38 @@
     gap: 1px;
     background: var(--border);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 12px;
     overflow: hidden;
   }
 
   .feat {
     background: var(--surface);
-    padding: 2rem;
-    transition: background .3s;
+    padding: 2.2rem;
+    transition: all .35s ease;
+    position: relative;
   }
 
-  .feat:hover {
-    background: var(--surface-raised);
+  .feat::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(135deg, var(--orange-glow) 0%, transparent 50%);
+    opacity: 0;
+    transition: opacity .35s ease;
+    pointer-events: none;
   }
+
+  .feat:hover { background: var(--surface-raised); }
+  .feat:hover::after { opacity: 1; }
 
   .feat-icon {
-    font-size: 1.6rem;
-    margin-bottom: .75rem;
+    font-size: 1.8rem;
+    margin-bottom: .85rem;
     display: block;
   }
 
   .feat h3 {
-    font-family: var(--body);
-    font-size: .95rem;
+    font-family: var(--heading);
+    font-size: 1rem;
     font-weight: 700;
     margin-bottom: .5rem;
     color: var(--cream);
@@ -251,51 +506,135 @@
   .feat p {
     font-size: .85rem;
     color: var(--text-dim);
-    line-height: 1.6;
+    line-height: 1.65;
+    font-weight: 300;
   }
 
-  /* ─── ARCH ─── */
+  /* ─── MARQUEE TESTIMONIALS ─── */
+  .testimonials-section {
+    padding: 5rem 0;
+    overflow: hidden;
+    position: relative;
+  }
+  .testimonials-section::before,
+  .testimonials-section::after {
+    content: '';
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 120px;
+    z-index: 2;
+    pointer-events: none;
+  }
+  .testimonials-section::before {
+    left: 0;
+    background: linear-gradient(90deg, var(--bg), transparent);
+  }
+  .testimonials-section::after {
+    right: 0;
+    background: linear-gradient(-90deg, var(--bg), transparent);
+  }
+  .testimonials-header {
+    text-align: center;
+    margin-bottom: 3rem;
+    padding: 0 1.5rem;
+  }
+  .testimonials-header h2 {
+    font-family: var(--display);
+    font-size: clamp(2rem, 5vw, 3rem);
+    font-weight: 900;
+    color: var(--cream);
+    letter-spacing: -.03em;
+  }
+  .testimonials-header h2 em {
+    font-style: italic; font-weight: 400;
+    background: linear-gradient(135deg, var(--orange), #ff4444);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .marquee-track {
+    display: flex;
+    gap: 1rem;
+    animation: marquee-scroll 60s linear infinite;
+    width: max-content;
+  }
+  .marquee-track:hover { animation-play-state: paused; }
+
+  .marquee-row + .marquee-row .marquee-track {
+    animation-direction: reverse;
+    animation-duration: 55s;
+  }
+
+  .marquee-row { margin-bottom: 1rem; overflow: hidden; }
+
+  @keyframes marquee-scroll {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+
+  .testimonial-card {
+    flex-shrink: 0;
+    width: 340px;
+    padding: 1.4rem 1.6rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    transition: all .3s ease;
+  }
+  .testimonial-card:hover {
+    border-color: var(--border-bright);
+    background: var(--surface-raised);
+    transform: translateY(-2px);
+  }
+  .testimonial-card p {
+    font-size: .84rem;
+    color: var(--text);
+    line-height: 1.6;
+    margin-bottom: .75rem;
+    font-weight: 300;
+  }
+  .testimonial-card .author {
+    font-family: var(--mono);
+    font-size: .7rem;
+    color: var(--orange);
+    letter-spacing: .02em;
+  }
+
+  /* ─── ARCHITECTURE ─── */
   .arch-wrap {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 12px;
     overflow: hidden;
+    box-shadow: 0 8px 40px rgba(0,0,0,.3);
   }
 
   .arch-header {
-    padding: 1rem 1.5rem;
+    padding: .85rem 1.5rem;
     border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    gap: .5rem;
+    display: flex; align-items: center; gap: .5rem;
   }
 
-  .arch-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-  }
-  .arch-dot:nth-child(1) { background: var(--crimson); }
-  .arch-dot:nth-child(2) { background: var(--amber); }
-  .arch-dot:nth-child(3) { background: #22c55e; }
+  .arch-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .arch-dot:nth-child(1) { background: #ff5f57; }
+  .arch-dot:nth-child(2) { background: #ffbd2e; }
+  .arch-dot:nth-child(3) { background: #28c840; }
 
-  .arch-body {
-    padding: 1.5rem;
-    overflow-x: auto;
-  }
+  .arch-body { padding: 1.5rem; overflow-x: auto; }
 
   .arch-body pre {
     font-family: var(--mono);
-    font-size: .78rem;
-    line-height: 1.7;
-    color: var(--amber-soft);
+    font-size: .75rem;
+    line-height: 1.8;
+    color: var(--orange-soft);
     white-space: pre;
     margin: 0;
   }
 
-  .arch-body .hl { color: var(--amber); }
-  .arch-body .dim { color: var(--text-dim); }
-  .arch-body .grn { color: #22c55e; }
+  .arch-body .hl { color: var(--orange); }
+  .arch-body .dim { color: var(--text-muted); }
+  .arch-body .grn { color: var(--green); }
 
   /* ─── STEPS ─── */
   .steps {
@@ -304,17 +643,17 @@
     gap: 1px;
     background: var(--border);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 12px;
     overflow: hidden;
     counter-reset: step;
   }
 
   .step {
     background: var(--surface);
-    padding: 2rem;
+    padding: 2.2rem;
     counter-increment: step;
     position: relative;
-    transition: background .3s;
+    transition: all .3s ease;
   }
 
   .step:hover { background: var(--surface-raised); }
@@ -322,158 +661,202 @@
   .step::before {
     content: counter(step, decimal-leading-zero);
     font-family: var(--mono);
-    font-size: .7rem;
-    color: var(--amber-soft);
+    font-size: .68rem;
+    color: var(--orange);
     letter-spacing: .1em;
     display: block;
-    margin-bottom: .75rem;
+    margin-bottom: .85rem;
+    font-weight: 700;
   }
 
   .step h3 {
-    font-size: .95rem;
+    font-family: var(--heading);
+    font-size: 1rem;
     font-weight: 700;
-    margin-bottom: .4rem;
+    margin-bottom: .5rem;
     color: var(--cream);
   }
 
   .step p {
     font-size: .85rem;
     color: var(--text-dim);
-    line-height: 1.6;
+    line-height: 1.65;
+    font-weight: 300;
   }
 
-  /* ─── QUICK START CODE ─── */
+  /* ─── CODE CARD ─── */
   .code-card {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 12px;
     overflow: hidden;
+    box-shadow: 0 8px 40px rgba(0,0,0,.3);
   }
 
   .code-tab {
     padding: .75rem 1.5rem;
     border-bottom: 1px solid var(--border);
     font-family: var(--mono);
-    font-size: .75rem;
+    font-size: .72rem;
     color: var(--text-dim);
     letter-spacing: .05em;
+    display: flex; align-items: center; gap: .5rem;
+  }
+  .code-tab .tab-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 6px rgba(0,255,136,.4);
   }
 
-  .code-body {
-    padding: 1.5rem;
-    overflow-x: auto;
-  }
+  .code-body { padding: 1.5rem; overflow-x: auto; }
 
   .code-body code {
     font-family: var(--mono);
-    font-size: .82rem;
-    line-height: 1.8;
-    color: #22c55e;
+    font-size: .8rem;
+    line-height: 1.85;
+    color: var(--green);
     white-space: pre;
   }
-  .code-body .cmt { color: var(--text-dim); }
+  .code-body .cmt { color: var(--text-muted); }
+  .code-body .str { color: var(--orange); }
 
   /* ─── STACK TABLE ─── */
   .stack-table {
     width: 100%;
     border-collapse: collapse;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 12px;
     overflow: hidden;
   }
 
   .stack-table th,
   .stack-table td {
-    padding: .85rem 1.25rem;
+    padding: .9rem 1.25rem;
     text-align: left;
     font-size: .88rem;
     border-bottom: 1px solid var(--border);
   }
 
   .stack-table th {
-    background: var(--surface);
+    background: var(--surface-raised);
     font-family: var(--mono);
-    font-size: .7rem;
+    font-size: .68rem;
     text-transform: uppercase;
     letter-spacing: .15em;
-    color: var(--text-dim);
+    color: var(--text-muted);
     font-weight: 500;
   }
 
-  .stack-table td { background: var(--surface); }
+  .stack-table td { background: var(--surface); font-weight: 300; }
   .stack-table tr:hover td { background: var(--surface-raised); }
   .stack-table td:first-child { font-weight: 600; color: var(--cream); }
 
   /* ─── DIVIDER ─── */
   .divider {
-    max-width: 1000px;
+    max-width: 1080px;
     margin: 0 auto;
     height: 1px;
-    background: linear-gradient(90deg, transparent 0%, var(--border) 20%, var(--border-glow) 50%, var(--border) 80%, transparent 100%);
+    background: linear-gradient(90deg, transparent 0%, var(--border) 15%, var(--orange-soft) 50%, var(--border) 85%, transparent 100%);
+    opacity: .3;
   }
 
   /* ─── FOOTER ─── */
   footer {
     text-align: center;
-    padding: 5rem 1.5rem 4rem;
-    color: var(--text-dim);
-    font-size: .9rem;
+    padding: 6rem 1.5rem 4rem;
+    position: relative;
+  }
+  footer::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 200px;
+    background: linear-gradient(180deg, transparent, rgba(255,107,43,.02));
+    pointer-events: none;
   }
 
   footer .tagline {
     font-family: var(--display);
-    font-size: 1.5rem;
-    font-style: italic;
-    color: var(--amber-soft);
-    margin-bottom: .75rem;
+    font-size: clamp(1.8rem, 4vw, 2.8rem);
+    font-weight: 900;
+    color: var(--cream);
+    margin-bottom: .5rem;
+    letter-spacing: -.02em;
+  }
+  footer .tagline em {
+    font-style: italic; font-weight: 400;
+    background: linear-gradient(135deg, var(--orange), #ff4444);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
   }
 
-  footer .sub { font-family: var(--mono); font-size: .75rem; letter-spacing: .1em; }
+  footer .sub {
+    font-family: var(--mono);
+    font-size: .72rem;
+    letter-spacing: .1em;
+    color: var(--text-muted);
+    max-width: 500px;
+    margin: 0 auto;
+    line-height: 1.6;
+  }
 
   footer .links {
-    margin-top: 2rem;
-    display: flex;
-    gap: 2rem;
-    justify-content: center;
-    flex-wrap: wrap;
+    margin-top: 2.5rem;
+    display: flex; gap: 1.5rem; justify-content: center; flex-wrap: wrap;
   }
 
   footer .links a {
     font-family: var(--mono);
-    font-size: .8rem;
+    font-size: .75rem;
     color: var(--text-dim);
     letter-spacing: .05em;
-    transition: color .2s;
+    transition: all .2s;
+    padding: .4rem .8rem;
+    border-radius: 6px;
   }
-  footer .links a:hover { color: var(--amber); }
+  footer .links a:hover {
+    color: var(--orange);
+    background: rgba(255,107,43,.06);
+  }
+
+  footer .copy {
+    margin-top: 3rem;
+    font-family: var(--mono);
+    font-size: .65rem;
+    color: var(--text-muted);
+    letter-spacing: .05em;
+  }
 
   /* ─── ANIMATIONS ─── */
   @keyframes fadeUp {
-    from { opacity: 0; transform: translateY(24px); }
+    from { opacity: 0; transform: translateY(30px); }
     to { opacity: 1; transform: translateY(0); }
   }
 
-  .fade-in {
-    opacity: 0;
-    animation: fadeUp .7s ease forwards;
-  }
+  .fade-in { opacity: 0; animation: fadeUp .8s cubic-bezier(.4,0,.2,1) forwards; }
   .d1 { animation-delay: .1s; }
   .d2 { animation-delay: .2s; }
   .d3 { animation-delay: .35s; }
   .d4 { animation-delay: .5s; }
   .d5 { animation-delay: .65s; }
+  .d6 { animation-delay: .8s; }
 
   /* ─── RESPONSIVE ─── */
   @media (max-width: 768px) {
+    .nav-links a:not(.nav-cta) { display: none; }
     .feat-grid { grid-template-columns: 1fr; }
     .steps { grid-template-columns: 1fr; }
-    .hero { min-height: auto; padding: 6rem 1rem 4rem; }
+    .hero { min-height: auto; padding: 7rem 1rem 4rem; }
     .section { padding: 4rem 1rem; }
+    .stats-bar { gap: 1.5rem; }
+    .stat-num { font-size: 1.6rem; }
+    .testimonial-card { width: 280px; }
+    .demo-frame-wrap iframe { height: 380px; }
   }
 
   @media (max-width: 480px) {
     .cta-group { flex-direction: column; align-items: stretch; }
     .btn { justify-content: center; }
+    .stats-bar { flex-direction: column; gap: 1rem; }
   }
 </style>
 </head>
@@ -481,40 +864,107 @@
 
 <div class="grain"></div>
 
+<!-- ═══════════════ NAV ═══════════════ -->
+<nav class="nav">
+  <div class="nav-brand"><span>🦞</span> AnyClaw</div>
+  <div class="nav-links">
+    <a href="#features">Features</a>
+    <a href="#demo">Demo</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#quickstart">Build</a>
+    <a href="https://play.google.com/store/apps/details?id=gptos.intelligence.assistant" class="nav-cta">Get the App</a>
+  </div>
+</nav>
+
+<!-- ═══════════════ ANNOUNCEMENT ═══════════════ -->
+<div class="announcement">
+  New <a href="https://xcodex.slrv.md/#/">XCodex WASM &mdash; try it live in your browser, zero install &rarr;</a>
+</div>
+
 <!-- ═══════════════ HERO ═══════════════ -->
-<div class="hero">
-  <div class="hero-claw fade-in d1">🦞</div>
-  <h1 class="fade-in d2">Any<em>Claw</em></h1>
-  <p class="hero-sub fade-in d3">OpenClaw + Codex &middot; Android</p>
-  <p class="hero-desc fade-in d4">
-    Two AI coding agents in <strong>one APK</strong>. Full Linux environment,
-    Node.js runtime, native Rust binary &mdash; all on your phone.
-    <strong>No root. No Termux.</strong>
+<section class="hero">
+  <div class="hero-badge fade-in d1">
+    <span class="dot"></span>
+    OpenClaw + Codex &middot; Now on Android
+  </div>
+  <div class="hero-claw fade-in d2">🦞</div>
+  <h1 class="fade-in d3">Any<em>Claw</em></h1>
+  <p class="hero-tagline fade-in d4">
+    Two AI coding agents crammed into <strong>one APK</strong>.<br>
+    Full Linux. Native Rust. Your pocket.
   </p>
+  <p class="hero-sub fade-in d4">No root. No Termux. No compromises.</p>
   <div class="cta-group fade-in d5">
-    <a href="https://play.google.com/store/apps/details?id=gptos.intelligence.assistant" class="btn btn-primary">Get it on Google Play</a>
+    <a href="https://xcodex.slrv.md/#/" class="btn btn-demo">Try Web Demo</a>
+    <a href="https://play.google.com/store/apps/details?id=gptos.intelligence.assistant" class="btn btn-primary">Google Play</a>
     <a href="https://github.com/friuns2/openclaw-android-assistant/releases/latest/download/anyclaw.apk" class="btn btn-ghost">Download APK</a>
     <a href="https://github.com/friuns2/openclaw-android-assistant" class="btn btn-ghost">GitHub</a>
-    <a href="https://github.com/friuns2/openclaw-android-assistant#quick-start" class="btn btn-ghost">Quick Start</a>
+  </div>
+</section>
+
+<!-- ═══════════════ STATS ═══════════════ -->
+<div class="stats-bar fade-in d6">
+  <div class="stat">
+    <div class="stat-num"><span class="accent">2</span></div>
+    <div class="stat-label">AI Agents</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num"><span class="accent">1</span></div>
+    <div class="stat-label">APK</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num"><span class="accent">0</span></div>
+    <div class="stat-label">Root Required</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num">73<span class="accent">MB</span></div>
+    <div class="stat-label">Native Binary</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num"><span class="accent">&infin;</span></div>
+    <div class="stat-label">Possibilities</div>
   </div>
 </div>
 
-<!-- ═══════════════ SCREENSHOTS ═══════════════ -->
-<div class="section" style="text-align:center">
-  <p class="section-label">In action</p>
-  <h2>See it <em>running</em></h2>
-  <div style="display:flex;gap:2rem;justify-content:center;flex-wrap:wrap;margin-top:2rem">
-    <img src="./screenshots/skills-hub.png" alt="Skills Hub desktop screenshot" style="width:min(440px,95vw);border-radius:12px;border:1px solid var(--border);box-shadow:0 8px 40px rgba(0,0,0,.5)" />
-    <img src="./screenshots/skills-hub-mobile.png" alt="Skills Hub mobile screenshot" style="width:min(220px,44vw);border-radius:12px;border:1px solid var(--border);box-shadow:0 8px 40px rgba(0,0,0,.5)" />
-    <img src="./screenshots/chat.png" alt="Chat desktop screenshot" style="width:min(440px,95vw);border-radius:12px;border:1px solid var(--border);box-shadow:0 8px 40px rgba(0,0,0,.5)" />
-    <img src="./screenshots/chat-mobile.png" alt="Chat mobile screenshot" style="width:min(220px,44vw);border-radius:12px;border:1px solid var(--border);box-shadow:0 8px 40px rgba(0,0,0,.5)" />
+<!-- ═══════════════ LIVE DEMO ═══════════════ -->
+<section class="demo-section" id="demo">
+  <div class="demo-inner">
+    <p class="section-label" style="justify-content:center">Try It Now</p>
+    <h2>Run it <em>in your browser</em></h2>
+    <p class="demo-desc">No install needed. XCodex WASM runs the full Codex experience right here.</p>
+    <div class="demo-frame-wrap">
+      <div class="demo-frame-bar">
+        <span class="demo-frame-dot"></span>
+        <span class="demo-frame-dot"></span>
+        <span class="demo-frame-dot"></span>
+        <span class="demo-frame-url">xcodex.slrv.md</span>
+      </div>
+      <iframe src="https://xcodex.slrv.md/#/" title="XCodex WASM Live Demo" loading="lazy" allow="clipboard-read; clipboard-write"></iframe>
+    </div>
+    <p style="margin-top:1.5rem">
+      <a href="https://xcodex.slrv.md/#/" class="btn btn-demo" style="font-size:.82rem;padding:.7rem 1.6rem">Open Full Screen</a>
+    </p>
   </div>
-</div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ═══════════════ SCREENSHOTS ═══════════════ -->
+<section class="section" style="text-align:center">
+  <p class="section-label" style="justify-content:center">In Action</p>
+  <h2>See it <em>running</em></h2>
+  <div class="screenshots-grid">
+    <img src="./screenshots/skills-hub.png" alt="Skills Hub desktop screenshot" class="screenshot-desktop" />
+    <img src="./screenshots/skills-hub-mobile.png" alt="Skills Hub mobile screenshot" class="screenshot-mobile" />
+    <img src="./screenshots/chat.png" alt="Chat desktop screenshot" class="screenshot-desktop" />
+    <img src="./screenshots/chat-mobile.png" alt="Chat mobile screenshot" class="screenshot-mobile" />
+  </div>
+</section>
 
 <div class="divider"></div>
 
 <!-- ═══════════════ FEATURES ═══════════════ -->
-<div class="section">
+<section class="section" id="features">
   <p class="section-label">Capabilities</p>
   <h2>Two agents, <em>one pocket</em></h2>
   <p class="section-intro">
@@ -536,7 +986,7 @@
     <div class="feat">
       <span class="feat-icon">🦀</span>
       <h3>Native Binary</h3>
-      <p>73MB Rust binary (aarch64-musl) running natively. Full <code style="color:var(--amber);font-family:var(--mono);font-size:.8rem">codex app-server</code> with JSON-RPC.</p>
+      <p>73MB Rust binary (aarch64-musl) running natively. Full <code style="color:var(--orange);font-family:var(--mono);font-size:.78rem">codex app-server</code> with JSON-RPC.</p>
     </div>
     <div class="feat">
       <span class="feat-icon">🐧</span>
@@ -546,7 +996,7 @@
     <div class="feat">
       <span class="feat-icon">🔓</span>
       <h3>Full Auto-Approval</h3>
-      <p>No permission popups. <code style="color:var(--amber);font-family:var(--mono);font-size:.8rem">danger-full-access</code> sandbox mode by default.</p>
+      <p>No permission popups. <code style="color:var(--orange);font-family:var(--mono);font-size:.78rem">danger-full-access</code> sandbox mode by default.</p>
     </div>
     <div class="feat">
       <span class="feat-icon">🔋</span>
@@ -554,13 +1004,163 @@
       <p>Foreground service + battery exemption. Keeps running when you switch apps.</p>
     </div>
   </div>
-</div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ═══════════════ TESTIMONIALS ═══════════════ -->
+<section class="testimonials-section">
+  <div class="testimonials-header">
+    <p class="section-label" style="justify-content:center">What People Say</p>
+    <h2>The hype is <em>real</em></h2>
+  </div>
+
+  <div class="marquee-row">
+    <div class="marquee-track">
+      <div class="testimonial-card">
+        <p>"Everything Siri was supposed to be. And it goes so much further."</p>
+        <span class="author">@crossiBuilds</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"It's running my company."</p>
+        <span class="author">@therno</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"A megacorp like Anthropic or OpenAI could not build this. Literally impossible with how corpo works."</p>
+        <span class="author">@Dimillian</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"Feels like we're living in the future."</p>
+        <span class="author">@Philo01</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"This is nuts. AnyClaw is a superpower."</p>
+        <span class="author">@robmartinson</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"Using it for a week and it genuinely feels like early AGI."</p>
+        <span class="author">@tobi_bsf</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"2026 is already the year of personal agents."</p>
+        <span class="author">@chrisdietr</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"I'm literally building a whole website on a Nokia 3310."</p>
+        <span class="author">@youbiak</span>
+      </div>
+      <!-- duplicate set for seamless loop -->
+      <div class="testimonial-card">
+        <p>"Everything Siri was supposed to be. And it goes so much further."</p>
+        <span class="author">@crossiBuilds</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"It's running my company."</p>
+        <span class="author">@therno</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"A megacorp like Anthropic or OpenAI could not build this. Literally impossible with how corpo works."</p>
+        <span class="author">@Dimillian</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"Feels like we're living in the future."</p>
+        <span class="author">@Philo01</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"This is nuts. AnyClaw is a superpower."</p>
+        <span class="author">@robmartinson</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"Using it for a week and it genuinely feels like early AGI."</p>
+        <span class="author">@tobi_bsf</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"2026 is already the year of personal agents."</p>
+        <span class="author">@chrisdietr</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"I'm literally building a whole website on a Nokia 3310."</p>
+        <span class="author">@youbiak</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="marquee-row">
+    <div class="marquee-track">
+      <div class="testimonial-card">
+        <p>"The amount of things I've done from my phone just during my breakfast is absolutely breathtaking."</p>
+        <span class="author">@SedRicKCZ</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"Catching fun vibes I haven't felt since I first got into computers 30 years ago."</p>
+        <span class="author">@buddyhadry</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"This is the first time I have felt like I am living in the future since the launch of ChatGPT."</p>
+        <span class="author">@davemorin</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"OpenClaw > anything GPT will ever release. Most fun I've had building in my entire life."</p>
+        <span class="author">@Giebz</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"Excellent reading thank you. Love oracle and Claw."</p>
+        <span class="author">@karpathy</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"AGI is a lobster, it will never sink!"</p>
+        <span class="author">@FrancisBrero</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"Autonomous Claude Code loops from my phone. 'fix tests' via Telegram."</p>
+        <span class="author">@php100</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"I am so addicted. It is getting essential to my daily life."</p>
+        <span class="author">@dreetje</span>
+      </div>
+      <!-- duplicate set for seamless loop -->
+      <div class="testimonial-card">
+        <p>"The amount of things I've done from my phone just during my breakfast is absolutely breathtaking."</p>
+        <span class="author">@SedRicKCZ</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"Catching fun vibes I haven't felt since I first got into computers 30 years ago."</p>
+        <span class="author">@buddyhadry</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"This is the first time I have felt like I am living in the future since the launch of ChatGPT."</p>
+        <span class="author">@davemorin</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"OpenClaw > anything GPT will ever release. Most fun I've had building in my entire life."</p>
+        <span class="author">@Giebz</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"Excellent reading thank you. Love oracle and Claw."</p>
+        <span class="author">@karpathy</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"AGI is a lobster, it will never sink!"</p>
+        <span class="author">@FrancisBrero</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"Autonomous Claude Code loops from my phone. 'fix tests' via Telegram."</p>
+        <span class="author">@php100</span>
+      </div>
+      <div class="testimonial-card">
+        <p>"I am so addicted. It is getting essential to my daily life."</p>
+        <span class="author">@dreetje</span>
+      </div>
+    </div>
+  </div>
+</section>
 
 <div class="divider"></div>
 
 <!-- ═══════════════ ARCHITECTURE ═══════════════ -->
-<div class="section">
-  <p class="section-label">Under the hood</p>
+<section class="section" id="architecture">
+  <p class="section-label">Under the Hood</p>
   <h2>Four layers, <em>one device</em></h2>
 
   <div class="arch-wrap">
@@ -589,13 +1189,13 @@
 </pre>
     </div>
   </div>
-</div>
+</section>
 
 <div class="divider"></div>
 
 <!-- ═══════════════ STARTUP ═══════════════ -->
-<div class="section">
-  <p class="section-label">Boot sequence</p>
+<section class="section">
+  <p class="section-label">Boot Sequence</p>
   <h2>From cold start to <em>ready</em></h2>
 
   <div class="steps">
@@ -605,7 +1205,7 @@
     </div>
     <div class="step">
       <h3>Bootstrap Extraction</h3>
-      <p>Extract Termux bootstrap zip into app&rsquo;s private storage. Fix hardcoded paths.</p>
+      <p>Extract Termux bootstrap zip into app's private storage. Fix hardcoded paths.</p>
     </div>
     <div class="step">
       <h3>Node.js &amp; Toolchain</h3>
@@ -624,20 +1224,20 @@
       <p>Start CONNECT proxy, OAuth login, gateway, Control UI server, then load WebView.</p>
     </div>
   </div>
-</div>
+</section>
 
 <div class="divider"></div>
 
 <!-- ═══════════════ QUICK START ═══════════════ -->
-<div class="section">
-  <p class="section-label">Get started</p>
+<section class="section" id="quickstart">
+  <p class="section-label">Get Started</p>
   <h2>Build from <em>source</em></h2>
 
   <div class="code-card">
-    <div class="code-tab">terminal</div>
+    <div class="code-tab"><span class="tab-dot"></span> terminal</div>
     <div class="code-body">
 <code><span class="cmt"># clone</span>
-git clone https://github.com/friuns2/openclaw-android-assistant.git
+git clone <span class="str">https://github.com/friuns2/openclaw-android-assistant.git</span>
 cd openclaw-android-assistant
 
 <span class="cmt"># build frontend</span>
@@ -652,17 +1252,19 @@ bash scripts/build-server-bundle.sh && ./gradlew assembleDebug \
   && adb shell am start -n com.codex.mobile/.MainActivity</code>
     </div>
   </div>
-  <p style="margin-top:1.5rem;color:var(--text-dim);font-size:.9rem">
-    Or install from <a href="https://play.google.com/store/apps/details?id=gptos.intelligence.assistant">Google Play</a>, or <a href="https://github.com/friuns2/openclaw-android-assistant/releases/latest/download/anyclaw.apk">download the latest APK</a>.
+  <p style="margin-top:1.5rem;color:var(--text-dim);font-size:.92rem;font-weight:300">
+    Or install from <a href="https://play.google.com/store/apps/details?id=gptos.intelligence.assistant">Google Play</a>,
+    <a href="https://github.com/friuns2/openclaw-android-assistant/releases/latest/download/anyclaw.apk">download the latest APK</a>,
+    or <a href="https://xcodex.slrv.md/#/">try the web demo</a> instantly.
   </p>
-</div>
+</section>
 
 <div class="divider"></div>
 
 <!-- ═══════════════ TECH STACK ═══════════════ -->
-<div class="section">
+<section class="section">
   <p class="section-label">Stack</p>
-  <h2>What&rsquo;s <em>inside</em></h2>
+  <h2>What's <em>inside</em></h2>
 
   <table class="stack-table">
     <thead><tr><th>Layer</th><th>Technology</th><th>Version</th></tr></thead>
@@ -677,19 +1279,21 @@ bash scripts/build-server-bundle.sh && ./gradlew assembleDebug \
       <tr><td>Linux</td><td>Termux bootstrap (aarch64)</td><td>&mdash;</td></tr>
     </tbody>
   </table>
-</div>
+</section>
 
 <!-- ═══════════════ FOOTER ═══════════════ -->
 <footer>
-  <div class="tagline">Two agents. One APK. Your pocket.</div>
+  <div class="tagline">Two agents. One APK. <em>Your pocket.</em></div>
   <div class="sub">Built by shoving an entire Linux distro into an APK and refusing to give up.</div>
   <div class="links">
     <a href="https://github.com/friuns2/openclaw-android-assistant">GitHub</a>
     <a href="https://play.google.com/store/apps/details?id=gptos.intelligence.assistant">Google Play</a>
     <a href="https://github.com/friuns2/openclaw-android-assistant/releases/latest/download/anyclaw.apk">Download APK</a>
+    <a href="https://xcodex.slrv.md/#/">Web Demo</a>
     <a href="https://openclaw.ai">OpenClaw</a>
     <a href="https://github.com/openai/codex">Codex CLI</a>
   </div>
+  <div class="copy">Built with lobster energy by the community</div>
 </footer>
 
 </body>
