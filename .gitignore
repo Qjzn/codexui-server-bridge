@@ -1,13 +1,15 @@
 node_modules/
+.npm-cache/
 dist/
 dist-cli/
 output/
 .playwright-cli/
 *.tsbuildinfo
 
-package-lock.json
 pnpm-lock.yaml
 .codex/
+.codexui/
 .env
 
 package.json
+codexui.config.json

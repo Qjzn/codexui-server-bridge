@@ -63,6 +63,12 @@ node -v   # 18+
 npx codexapp
 ```
 
+You can also pin the bind address and skip the default tunnel:
+
+```powershell
+npx codexapp --host 0.0.0.0 --port 7420 --no-tunnel --password "change-me"
+```
+
 ### Termux (Android) 🤖
 ```bash
 pkg update && pkg upgrade -y
@@ -80,6 +86,65 @@ Android background requirements:
 termux-wake-lock
 ```
 5. Open the shown URL in your Android browser. If the app is killed, return to Termux and run `npx codexapp` again.
+
+---
+
+## ⚙️ Config File Support
+
+`codexapp` can now load launch options from JSON so Windows servers and long-running setups do not need hard-coded batch files.
+
+Search order:
+
+1. `--config <path>`
+2. `CODEXUI_CONFIG`
+3. `./codexui.config.json`
+4. `~/.codexui/config.json`
+
+Example:
+
+```json
+{
+  "host": "0.0.0.0",
+  "port": 7420,
+  "password": "replace-with-your-password",
+  "tunnel": false,
+  "open": false,
+  "projectPath": "C:\\Users\\your-user\\Documents\\Playground"
+}
+```
+
+Tracked example file:
+
+- [`codexui.config.example.json`](./codexui.config.example.json)
+
+---
+
+## 🪟 Windows Server Install
+
+For source-based Windows deployments, the repo now includes a helper script that installs dependencies, builds the project, writes a stable config file, creates a launcher, and can optionally open the firewall port:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install-windows-server.ps1 `
+  -ProjectPath "C:\Users\SW\Documents\Playground" `
+  -Port 7420 `
+  -Password "change-me" `
+  -OpenFirewall `
+  -StartNow
+```
+
+More details:
+
+- [`docs/windows-server.md`](./docs/windows-server.md)
+
+The installer defaults to server-friendly settings:
+
+- tunnel disabled
+- browser auto-open disabled
+
+Health endpoints:
+
+- `GET /health`
+- `GET /codex-api/health`
 
 ---
 
@@ -127,6 +192,8 @@ Notes:
 - 🧪 Remote/headless-friendly setup for server-based Codex usage
 - 🔌 Works with reverse proxies and tunneling setups
 - ⚡ No global install required for quick experimentation
+- ⚙️ Config-driven startup with `--config` and default config discovery
+- ❤️ Lightweight health endpoints for process managers and reverse proxies
 - 🎙️ Built-in hold-to-dictate voice input with transcription to composer draft
 - 🤖 Optional Telegram bot bridge: send messages to bot, forward into mapped thread, send assistant reply back to Telegram
 
@@ -228,6 +295,7 @@ Bot commands:
 | Port already in use | Run on a free port or stop old process |
 | `npx` fails | Update npm/node, then retry |
 | Termux install fails | `pkg update && pkg upgrade` then reinstall `nodejs` |
+| Build from source fails on Windows | Run `npm install` then `npm run build`; `build` no longer requires `pnpm` |
 | Can’t open from other device | Check firewall, bind address, and LAN routing |
 
 ---

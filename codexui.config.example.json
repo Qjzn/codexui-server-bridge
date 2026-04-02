@@ -1,0 +1,10 @@
+{
+  "host": "0.0.0.0",
+  "port": 7420,
+  "password": "replace-with-your-password",
+  "tunnel": false,
+  "open": false,
+  "projectPath": "C:\\Users\\your-user\\Documents\\Playground",
+  "codexCommand": "C:\\path\\to\\codex.exe",
+  "ripgrepCommand": "C:\\path\\to\\rg.exe"
+}

@@ -17,6 +17,7 @@ import {
   prependPathEntry,
   resolveCodexCommand,
 } from '../commandResolution.js'
+import { resolveLaunchOptions, type LaunchCliOptions } from './config.js'
 import { createServer as createApp } from '../server/httpServer.js'
 import { generatePassword } from '../server/password.js'
 import { spawnSyncCommand } from '../utils/commandInvocation.js'
@@ -288,25 +289,70 @@ function parseCloudflaredUrl(chunk: string): string | null {
   return urlMatch[urlMatch.length - 1] ?? null
 }
 
-function getAccessibleUrls(port: number): string[] {
-  const urls = new Set<string>([`http://localhost:${String(port)}`])
-  try {
-    const interfaces = networkInterfaces()
-    for (const entries of Object.values(interfaces)) {
-      if (!entries) {
-        continue
-      }
-      for (const entry of entries) {
-        if (entry.internal) {
+function isWildcardBindHost(host: string): boolean {
+  const normalized = host.trim().toLowerCase()
+  return normalized === '0.0.0.0' || normalized === '::'
+}
+
+function getAccessibleUrls(host: string, port: number): string[] {
+  const trimmedHost = host.trim()
+  const normalizedHost = trimmedHost.toLowerCase()
+  if (!trimmedHost || isWildcardBindHost(trimmedHost)) {
+    const urls = new Set<string>([`http://localhost:${String(port)}`])
+    try {
+      const interfaces = networkInterfaces()
+      for (const entries of Object.values(interfaces)) {
+        if (!entries) {
           continue
         }
-        if (entry.family === 'IPv4') {
-          urls.add(`http://${entry.address}:${String(port)}`)
+        for (const entry of entries) {
+          if (entry.internal) {
+            continue
+          }
+          if (entry.family === 'IPv4') {
+            urls.add(`http://${entry.address}:${String(port)}`)
+          }
         }
       }
+    } catch {}
+    return Array.from(urls)
+  }
+
+  if (normalizedHost === 'localhost') {
+    return [`http://localhost:${String(port)}`]
+  }
+
+  return [`http://${trimmedHost}:${String(port)}`]
+}
+
+function getPreferredOpenUrl(host: string, port: number): string {
+  const urls = getAccessibleUrls(host, port)
+  return urls[0] ?? `http://localhost:${String(port)}`
+}
+
+function listenWithFallback(server: ReturnType<typeof createServer>, startPort: number, host: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const attempt = (port: number) => {
+      const onError = (error: NodeJS.ErrnoException) => {
+        server.off('listening', onListening)
+        if (error.code === 'EADDRINUSE' || error.code === 'EACCES') {
+          attempt(port + 1)
+          return
+        }
+        reject(error)
+      }
+      const onListening = () => {
+        server.off('error', onError)
+        resolve(port)
+      }
+
+      server.once('error', onError)
+      server.once('listening', onListening)
+      server.listen(port, host)
     }
-  } catch {}
-  return Array.from(urls)
+
+    attempt(startPort)
+  })
 }
 
 async function startCloudflaredTunnel(command: string, localPort: number): Promise<{
@@ -351,31 +397,6 @@ async function startCloudflaredTunnel(command: string, localPort: number): Promi
       clearTimeout(timeout)
       reject(new Error(`cloudflared exited before providing a URL (code ${String(code)})`))
     })
-  })
-}
-
-function listenWithFallback(server: ReturnType<typeof createServer>, startPort: number): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const attempt = (port: number) => {
-      const onError = (error: NodeJS.ErrnoException) => {
-        server.off('listening', onListening)
-        if (error.code === 'EADDRINUSE' || error.code === 'EACCES') {
-          attempt(port + 1)
-          return
-        }
-        reject(error)
-      }
-      const onListening = () => {
-        server.off('error', onError)
-        resolve(port)
-      }
-
-      server.once('error', onError)
-      server.once('listening', onListening)
-      server.listen(port, '0.0.0.0')
-    }
-
-    attempt(startPort)
   })
 }
 
@@ -438,7 +459,17 @@ async function addProjectOnly(projectPath: string): Promise<void> {
   await persistLaunchProject(trimmed)
 }
 
-async function startServer(options: { port: string; password: string | boolean; tunnel: boolean; open: boolean; projectPath?: string }) {
+async function startServer(options: {
+  configPath?: string
+  host: string
+  port: string
+  password: string | boolean
+  tunnel: boolean
+  open: boolean
+  projectPath?: string
+  codexCommand?: string
+  ripgrepCommand?: string
+}) {
   const version = await readCliVersion()
   const projectPath = options.projectPath?.trim() ?? ''
   if (projectPath.length > 0) {
@@ -449,6 +480,13 @@ async function startServer(options: { port: string; password: string | boolean; 
       console.warn(`\n[project] Could not open launch project: ${message}\n`)
     }
   }
+  if (options.codexCommand) {
+    process.env.CODEXUI_CODEX_COMMAND = options.codexCommand
+  }
+  if (options.ripgrepCommand) {
+    process.env.CODEXUI_RG_COMMAND = options.ripgrepCommand
+  }
+
   const codexCommand = ensureCodexInstalled() ?? resolveCodexCommand()
   if (codexCommand) {
     process.env.CODEXUI_CODEX_COMMAND = codexCommand
@@ -457,12 +495,20 @@ async function startServer(options: { port: string; password: string | boolean; 
     console.log('\nCodex is not logged in. Starting `codex login`...\n')
     runOrFail(codexCommand, ['login'], 'Codex login')
   }
+
+  const host = options.host.trim()
+  if (!host) {
+    throw new Error('Host must not be empty')
+  }
   const requestedPort = parseInt(options.port, 10)
+  if (!Number.isInteger(requestedPort) || requestedPort < 1 || requestedPort > 65535) {
+    throw new Error(`Invalid port: ${options.port}`)
+  }
   const password = resolvePassword(options.password)
   const { app, dispose, attachWebSocket } = createApp({ password })
   const server = createServer(app)
   attachWebSocket(server)
-  const port = await listenWithFallback(server, requestedPort)
+  const port = await listenWithFallback(server, requestedPort, host)
   let tunnelChild: ReturnType<typeof spawn> | null = null
   let tunnelUrl: string | null = null
 
@@ -487,14 +533,20 @@ async function startServer(options: { port: string; password: string | boolean; 
     `  Version:  ${version}`,
     '  GitHub:   https://github.com/friuns2/codexui',
     '',
-    `  Bind:     http://0.0.0.0:${String(port)}`,
+    `  Bind:     http://${host}:${String(port)}`,
   ]
-  const accessUrls = getAccessibleUrls(port)
+  const accessUrls = getAccessibleUrls(host, port)
   if (accessUrls.length > 0) {
     lines.push(`  Local:    ${accessUrls[0]}`)
     for (const accessUrl of accessUrls.slice(1)) {
       lines.push(`  Network:  ${accessUrl}`)
     }
+  }
+  lines.push('  Health:   /health')
+  lines.push('  RPC:      /codex-api/rpc')
+
+  if (options.configPath) {
+    lines.push(`  Config:   ${options.configPath}`)
   }
 
   if (port !== requestedPort) {
@@ -516,7 +568,7 @@ async function startServer(options: { port: string; password: string | boolean; 
     qrcode.generate(tunnelUrl, { small: true })
     console.log('')
   }
-  if (options.open) openBrowser(`http://localhost:${String(port)}`)
+  if (options.open) openBrowser(getPreferredOpenUrl(host, port))
 
   function shutdown() {
     console.log('\nShutting down...')
@@ -547,6 +599,8 @@ async function runLogin() {
 
 program
   .argument('[projectPath]', 'project directory to open on launch')
+  .option('-c, --config <path>', 'read launch options from a JSON config file')
+  .option('--host <host>', 'host/interface to bind', '0.0.0.0')
   .option('--open-project <path>', 'open project directory on launch (Codex desktop parity)')
   .option('-p, --port <port>', 'port to listen on', '5999')
   .option('--password <pass>', 'set a specific password')
@@ -557,7 +611,7 @@ program
   .option('--no-open', 'do not open browser on startup')
   .action(async (
     projectPath: string | undefined,
-    opts: { port: string; password: string | boolean; tunnel: boolean; open: boolean; openProject?: string },
+    opts: LaunchCliOptions,
   ) => {
     const rawArgv = process.argv.slice(2)
     const openProjectFlagIndex = rawArgv.findIndex((arg) => arg === '--open-project' || arg.startsWith('--open-project='))
@@ -573,7 +627,12 @@ program
     }
 
     const launchProject = (projectPath ?? '').trim()
-    await startServer({ ...opts, projectPath: launchProject })
+    const resolvedOptions = await resolveLaunchOptions({
+      rawArgv,
+      cliOptions: opts,
+      projectPath: launchProject,
+    })
+    await startServer(resolvedOptions)
   })
 
 program.command('login').description('Install/check Codex CLI and run `codex login`').action(runLogin)

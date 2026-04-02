@@ -62,6 +62,15 @@ type PendingServerRequest = {
   receivedAtIso: string
 }
 
+type AppServerHealth = {
+  running: boolean
+  initialized: boolean
+  stopping: boolean
+  pid: number | null
+  pendingRpcCount: number
+  pendingServerRequestCount: number
+}
+
 type ThreadSearchDocument = {
   id: string
   title: string
@@ -1274,6 +1283,17 @@ class AppServerProcess {
     return Array.from(this.pendingServerRequests.values())
   }
 
+  getStatus(): AppServerHealth {
+    return {
+      running: this.process !== null,
+      initialized: this.initialized,
+      stopping: this.stopping,
+      pid: this.process?.pid ?? null,
+      pendingRpcCount: this.pending.size,
+      pendingServerRequestCount: this.pendingServerRequests.size,
+    }
+  }
+
   dispose(): void {
     if (!this.process) return
 
@@ -1618,6 +1638,17 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
 
       if (req.method === 'GET' && url.pathname === '/codex-api/server-requests/pending') {
         setJson(res, 200, { data: appServer.listPendingServerRequests() })
+        return
+      }
+
+      if (req.method === 'GET' && url.pathname === '/codex-api/health') {
+        setJson(res, 200, {
+          status: 'ok',
+          data: {
+            appServer: appServer.getStatus(),
+            timestamp: new Date().toISOString(),
+          },
+        })
         return
       }
 

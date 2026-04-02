@@ -73,6 +73,14 @@ export function createServer(options: ServerOptions = {}): ServerInstance {
   const bridge = createCodexBridgeMiddleware()
   const authSession = options.password ? createAuthSession(options.password) : null
 
+  app.get('/health', (_req, res) => {
+    res.status(200).json({
+      status: 'ok',
+      service: 'codexui',
+      atIso: new Date().toISOString(),
+    })
+  })
+
   // 1. Auth middleware (if password is set)
   if (authSession) {
     app.use(authSession.middleware)

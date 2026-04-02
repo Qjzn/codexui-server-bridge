@@ -36,9 +36,9 @@
     "dev:open": "pnpm run build:cli && sh -c 'pnpm run dev & VPID=$!; node dist-cli/index.js --open-project \"${1:-.}\"; wait $VPID' --",
     "build:frontend": "vue-tsc --noEmit && vite build",
     "build:cli": "tsup",
-    "build": "pnpm run build:frontend && pnpm run build:cli",
+    "build": "npm run build:frontend && npm run build:cli",
     "preview": "vite preview",
-    "prepublishOnly": "pnpm run build"
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "commander": "^13.1.0",
