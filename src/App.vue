@@ -145,6 +145,19 @@
               @start-new-thread="onStartNewThreadFromToolbar"
             />
           </template>
+          <template #actions>
+            <button
+              v-if="isDesktopRefreshAvailable"
+              class="desktop-refresh-button"
+              type="button"
+              :title="desktopRefreshButtonTitle"
+              :disabled="isDesktopRefreshRunning"
+              @click="onRefreshDesktopApp"
+            >
+              <IconTablerArrowBackUp class="desktop-refresh-button-icon" />
+              <span>{{ desktopRefreshButtonLabel }}</span>
+            </button>
+          </template>
         </ContentHeader>
 
         <section class="content-body">
@@ -301,6 +314,7 @@ import ComposerDropdown from './components/content/ComposerDropdown.vue'
 import ComposerRuntimeDropdown from './components/content/ComposerRuntimeDropdown.vue'
 import SkillsHub from './components/content/SkillsHub.vue'
 import SidebarThreadControls from './components/sidebar/SidebarThreadControls.vue'
+import IconTablerArrowBackUp from './components/icons/IconTablerArrowBackUp.vue'
 import IconTablerSearch from './components/icons/IconTablerSearch.vue'
 import IconTablerSettings from './components/icons/IconTablerSettings.vue'
 import IconTablerX from './components/icons/IconTablerX.vue'
@@ -309,17 +323,19 @@ import { useMobile } from './composables/useMobile'
 import {
   configureTelegramBot,
   createWorktree,
+  getDesktopAppStatus,
   getGithubProjectsForScope,
   getHomeDirectory,
   getProjectRootSuggestion,
   getTelegramStatus,
   getWorkspaceRootsState,
   openProjectRoot,
+  refreshDesktopApp,
   searchThreads,
 } from './api/codexGateway'
 import type { ReasoningEffort, SpeedMode, ThreadScrollState } from './types/codex'
 import type { ComposerDraftPayload, ThreadComposerExposed } from './components/content/ThreadComposer.vue'
-import type { GithubTipsScope, GithubTrendingProject, TelegramStatus } from './api/codexGateway'
+import type { DesktopAppStatus, GithubTipsScope, GithubTrendingProject, TelegramStatus } from './api/codexGateway'
 import { getPathLeafName, getPathParent } from './pathUtils.js'
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'codex-web-local.sidebar-collapsed.v1'
@@ -540,6 +556,15 @@ const telegramStatus = ref<TelegramStatus>({
   mappedThreads: 0,
   lastError: '',
 })
+const desktopAppStatus = ref<DesktopAppStatus>({
+  available: false,
+  platform: '',
+  appInstalled: false,
+  appRunning: false,
+  appUserModelId: '',
+  reason: '',
+})
+const isDesktopRefreshRunning = ref(false)
 
 const routeThreadId = computed(() => {
   const rawThreadId = route.params.threadId
@@ -645,6 +670,16 @@ const telegramStatusText = computed(() => {
   const error = telegramStatus.value.lastError ? `, error: ${telegramStatus.value.lastError}` : ''
   return `${base}, ${mapped}${error}`
 })
+const isDesktopRefreshAvailable = computed(() => desktopAppStatus.value.available)
+const desktopRefreshButtonTitle = computed(() => {
+  if (desktopAppStatus.value.available) {
+    return 'Close and reopen the official Codex desktop app so it reloads the latest web-side conversations.'
+  }
+  return desktopAppStatus.value.reason || 'Official Codex desktop app refresh is unavailable on this machine.'
+})
+const desktopRefreshButtonLabel = computed(() => (
+  isDesktopRefreshRunning.value ? 'Refreshing...' : 'Refresh app'
+))
 
 onMounted(() => {
   window.addEventListener('keydown', onWindowKeyDown)
@@ -656,6 +691,7 @@ onMounted(() => {
   void loadWorkspaceRootOptionsState()
   void refreshDefaultProjectName()
   void refreshTelegramStatus()
+  void refreshDesktopAppAvailability()
   if (showGithubTrendingProjects.value) {
     void loadTrendingProjects()
   }
@@ -712,6 +748,49 @@ async function refreshTelegramStatus(): Promise<void> {
       lastError: message,
     }
   }
+}
+
+async function refreshDesktopAppAvailability(): Promise<void> {
+  try {
+    desktopAppStatus.value = await getDesktopAppStatus()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to load desktop app status'
+    desktopAppStatus.value = {
+      available: false,
+      platform: '',
+      appInstalled: false,
+      appRunning: false,
+      appUserModelId: '',
+      reason: message,
+    }
+  }
+}
+
+function onRefreshDesktopApp(): void {
+  if (isDesktopRefreshRunning.value) return
+  if (!desktopAppStatus.value.available) {
+    window.alert(desktopAppStatus.value.reason || 'Official Codex desktop app refresh is unavailable on this machine.')
+    return
+  }
+
+  const shouldContinue = window.confirm(
+    'This will close and reopen the official Codex desktop app on this Windows machine. Continue?',
+  )
+  if (!shouldContinue) return
+
+  isDesktopRefreshRunning.value = true
+  void refreshDesktopApp()
+    .then((result) => {
+      window.alert(result.message)
+    })
+    .catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : 'Failed to refresh the official Codex desktop app'
+      window.alert(message)
+    })
+    .finally(() => {
+      isDesktopRefreshRunning.value = false
+      void refreshDesktopAppAvailability()
+    })
 }
 
 function toggleSidebarSearch(): void {
@@ -1640,6 +1719,14 @@ async function submitFirstMessageForNewThread(
 
 .sidebar-thread-controls-header-host {
   @apply ml-1;
+}
+
+.desktop-refresh-button {
+  @apply inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-60;
+}
+
+.desktop-refresh-button-icon {
+  @apply h-3.5 w-3.5;
 }
 
 .content-body {

@@ -71,6 +71,20 @@ export type TelegramStatus = {
   lastError: string
 }
 
+export type DesktopAppStatus = {
+  available: boolean
+  platform: string
+  appInstalled: boolean
+  appRunning: boolean
+  appUserModelId: string
+  reason: string
+}
+
+export type DesktopAppRefreshResult = {
+  requested: boolean
+  message: string
+}
+
 export type GithubTrendingProject = {
   id: number
   fullName: string
@@ -664,6 +678,57 @@ export async function getTelegramStatus(): Promise<TelegramStatus> {
     mappedChats: typeof data.mappedChats === 'number' ? data.mappedChats : 0,
     mappedThreads: typeof data.mappedThreads === 'number' ? data.mappedThreads : 0,
     lastError: typeof data.lastError === 'string' ? data.lastError : '',
+  }
+}
+
+export async function getDesktopAppStatus(): Promise<DesktopAppStatus> {
+  const response = await fetch('/codex-api/desktop-app/status')
+  const payload = await response.json()
+  if (!response.ok) {
+    const message = getErrorMessageFromPayload(payload, 'Failed to load desktop app status')
+    throw new Error(message)
+  }
+  const record =
+    payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? (payload as Record<string, unknown>)
+      : {}
+  const data =
+    record.data && typeof record.data === 'object' && !Array.isArray(record.data)
+      ? (record.data as Record<string, unknown>)
+      : {}
+  return {
+    available: data.available === true,
+    platform: typeof data.platform === 'string' ? data.platform : '',
+    appInstalled: data.appInstalled === true,
+    appRunning: data.appRunning === true,
+    appUserModelId: typeof data.appUserModelId === 'string' ? data.appUserModelId : '',
+    reason: typeof data.reason === 'string' ? data.reason : '',
+  }
+}
+
+export async function refreshDesktopApp(): Promise<DesktopAppRefreshResult> {
+  const response = await fetch('/codex-api/desktop-app/refresh', {
+    method: 'POST',
+  })
+  const payload = await response.json()
+  if (!response.ok) {
+    const message = getErrorMessageFromPayload(payload, 'Failed to refresh the desktop app')
+    throw new Error(message)
+  }
+  const record =
+    payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? (payload as Record<string, unknown>)
+      : {}
+  const data =
+    record.data && typeof record.data === 'object' && !Array.isArray(record.data)
+      ? (record.data as Record<string, unknown>)
+      : {}
+  return {
+    requested: data.requested === true,
+    message:
+      typeof data.message === 'string' && data.message.trim().length > 0
+        ? data.message
+        : 'Official Codex desktop app refresh requested.',
   }
 }
 

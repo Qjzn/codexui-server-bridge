@@ -12,6 +12,7 @@ import { createInterface } from 'node:readline'
 import { writeFile } from 'node:fs/promises'
 import { handleSkillsRoutes, initializeSkillsSyncOnStartup } from './skillsRoutes.js'
 import { TelegramThreadBridge } from './telegramThreadBridge.js'
+import { getDesktopAppRefreshStatus, requestDesktopAppRefresh } from './desktopAppRefresh.js'
 import { getSpawnInvocation } from '../utils/commandInvocation.js'
 import {
   resolveCodexCommand,
@@ -2068,6 +2069,22 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
 
       if (req.method === 'GET' && url.pathname === '/codex-api/telegram/status') {
         setJson(res, 200, { data: telegramBridge.getStatus() })
+        return
+      }
+
+      if (req.method === 'GET' && url.pathname === '/codex-api/desktop-app/status') {
+        const status = await getDesktopAppRefreshStatus()
+        setJson(res, 200, { data: status })
+        return
+      }
+
+      if (req.method === 'POST' && url.pathname === '/codex-api/desktop-app/refresh') {
+        try {
+          const result = await requestDesktopAppRefresh()
+          setJson(res, 202, { data: result })
+        } catch (error) {
+          setJson(res, 409, { error: getErrorMessage(error, 'Failed to refresh the official Codex desktop app') })
+        }
         return
       }
 
