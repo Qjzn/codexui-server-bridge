@@ -531,7 +531,7 @@ async function startServer(options: {
     '',
     'Codex Web Local is running!',
     `  Version:  ${version}`,
-    '  GitHub:   https://github.com/friuns2/codexui',
+    '  GitHub:   https://github.com/Qjzn/codexui-server-bridge',
     '',
     `  Bind:     http://${host}:${String(port)}`,
   ]

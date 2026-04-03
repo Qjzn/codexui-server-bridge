@@ -1,17 +1,17 @@
 {
   "name": "codexapp",
   "version": "0.1.58",
-  "description": "A lightweight web interface for Codex that runs on top of the Codex app-server, allowing remote access from any browser",
+  "description": "A browser-accessible Codex bridge with Windows server, LAN, and remote deployment support",
   "type": "module",
   "license": "MIT",
-  "author": "Pavel Voronin, Igor Levochkin",
+  "author": "Pavel Voronin, Igor Levochkin, and contributors",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/friuns2/codexui.git"
+    "url": "git+https://github.com/Qjzn/codexui-server-bridge.git"
   },
-  "homepage": "https://github.com/friuns2/codexui#readme",
+  "homepage": "https://github.com/Qjzn/codexui-server-bridge#readme",
   "bugs": {
-    "url": "https://github.com/friuns2/codexui/issues"
+    "url": "https://github.com/Qjzn/codexui-server-bridge/issues"
   },
   "keywords": [
     "codex",

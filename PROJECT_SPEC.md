@@ -1,12 +1,12 @@
-# codex-web-local — Project Specification
+# codexui-server-bridge — Project Specification
 
 ## Overview
 
-**codex-web-local** is a lightweight, browser-based web UI for [OpenAI Codex](https://github.com/openai/codex). It mirrors the Codex Desktop experience and runs on top of the Codex `app-server`, allowing remote access to a local Codex instance from any browser.
+**codexui-server-bridge** is a lightweight, browser-based web UI for [OpenAI Codex](https://github.com/openai/codex). It mirrors the Codex Desktop experience and runs on top of the Codex `app-server`, allowing remote access to a local Codex instance from any browser.
 
 - **Author:** Pavel Voronin
 - **License:** MIT
-- **Repository:** https://github.com/pavel-voronin/codex-web-local
+- **Repository:** https://github.com/Qjzn/codexui-server-bridge
 
 ## Architecture
 

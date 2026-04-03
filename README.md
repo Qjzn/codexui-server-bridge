@@ -3,6 +3,7 @@
 ### 🚀 Run Codex App UI Anywhere: Linux, Windows, or Termux on Android 🚀
 
 [![npm](https://img.shields.io/npm/v/codexapp?style=for-the-badge&logo=npm&logoColor=white)](https://www.npmjs.com/package/codexapp)
+[![CI](https://img.shields.io/github/actions/workflow/status/Qjzn/codexui-server-bridge/ci.yml?branch=main&style=for-the-badge&label=CI)](https://github.com/Qjzn/codexui-server-bridge/actions/workflows/ci.yml)
 [![platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20Android-blue?style=for-the-badge)](#-quick-start)
 [![node](https://img.shields.io/badge/Node-18%2B-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![license](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](./LICENSE)
@@ -10,6 +11,8 @@
 > **Codex UI in your browser. No drama. One command.**
 >  
 > **Yes, that is your Codex desktop app experience exposed over web UI. Yes, it runs cross-platform.**
+>
+> This fork focuses on Windows server deployment, LAN access, stable browser entry points, and config-driven self-hosting.
 
 ```text
  ██████╗ ██████╗ ██████╗ ███████╗██╗  ██╗██╗   ██╗██╗
@@ -28,6 +31,34 @@
 You run one command. It starts a local web server. You open it from your machine, your LAN, or wherever your setup allows.  
 
 **TL;DR 🧠: Codex app UI, unlocked for Linux, Windows, and Termux-powered Android setups.**
+
+This repository is the server-oriented fork:
+
+- GitHub: [Qjzn/codexui-server-bridge](https://github.com/Qjzn/codexui-server-bridge)
+- Focus: Windows server install, config files, health checks, and browser access from phones or LAN clients
+
+---
+
+## 🚀 Best Path For Windows Servers
+
+If your goal is "keep Codex on a Windows machine and access it from a browser or phone", this is the shortest path:
+
+1. Install Node.js 18+ and make sure Codex CLI can run on the host.
+2. Clone this repo and run `npm install`.
+3. Run the Windows installer script from this repo.
+4. Open the reported LAN URL from your browser or phone.
+
+```powershell
+git clone https://github.com/Qjzn/codexui-server-bridge.git
+cd .\codexui-server-bridge
+npm install
+powershell -ExecutionPolicy Bypass -File .\scripts\install-windows-server.ps1 `
+  -ProjectPath "C:\CodexWorkspace" `
+  -Port 7420 `
+  -Password "change-me" `
+  -OpenFirewall `
+  -StartNow
+```
 
 ---
 
@@ -315,4 +346,4 @@ Built for speed, portability, and a little bit of chaos 😏
 
 ---
 
-Forked from [pavel-voronin/codex-web-local](https://github.com/pavel-voronin/codex-web-local) by Pavel Voronin.
+Fork lineage: [pavel-voronin/codex-web-local](https://github.com/pavel-voronin/codex-web-local) -> [friuns2/codexui](https://github.com/friuns2/codexui) -> [Qjzn/codexui-server-bridge](https://github.com/Qjzn/codexui-server-bridge).
