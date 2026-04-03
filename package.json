@@ -37,6 +37,7 @@
     "build:frontend": "vue-tsc --noEmit && vite build",
     "build:cli": "tsup",
     "build": "npm run build:frontend && npm run build:cli",
+    "setup:windows": "powershell -ExecutionPolicy Bypass -File ./setup.ps1",
     "preview": "vite preview",
     "prepublishOnly": "npm run build"
   },

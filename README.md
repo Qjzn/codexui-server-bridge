@@ -39,25 +39,53 @@ This repository is the server-oriented fork:
 
 ---
 
-## 🚀 Best Path For Windows Servers
+## 🚀 One-Command Install For Windows
 
-If your goal is "keep Codex on a Windows machine and access it from a browser or phone", this is the shortest path:
-
-1. Install Node.js 18+ and make sure Codex CLI can run on the host.
-2. Clone this repo and run `npm install`.
-3. Run the Windows installer script from this repo.
-4. Open the reported LAN URL from your browser or phone.
+If you want the easiest possible setup on a Windows machine, run exactly this:
 
 ```powershell
-git clone https://github.com/Qjzn/codexui-server-bridge.git
-cd .\codexui-server-bridge
-npm install
-powershell -ExecutionPolicy Bypass -File .\scripts\install-windows-server.ps1 `
-  -ProjectPath "C:\CodexWorkspace" `
+Set-ExecutionPolicy Bypass -Scope Process -Force; irm https://raw.githubusercontent.com/Qjzn/codexui-server-bridge/main/scripts/bootstrap-windows.ps1 | iex
+```
+
+What this single command does:
+
+- installs a portable Node.js automatically if Node is missing
+- downloads the latest repository into `%LOCALAPPDATA%\codexui-server-bridge`
+- creates a workspace at `%USERPROFILE%\CodexWorkspace`
+- builds the project
+- creates `%USERPROFILE%\.local\bin\codexui-start.cmd`
+- creates a logon startup task
+- opens firewall port `7420` when permissions allow
+- starts the web bridge immediately
+
+After it finishes, open the printed LAN or local URL and use the password shown in the terminal.
+
+If Codex is not logged in yet, the installer will launch the official login flow once in the current console before starting the background entry point.
+
+You can safely run the same install command again later. It will refresh the same config and launcher, then replace the previous managed instance with the new settings.
+
+### Custom Port Or Password
+
+If you want to customize the default port or password, use the scriptblock form:
+
+```powershell
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/Qjzn/codexui-server-bridge/main/scripts/bootstrap-windows.ps1'))) `
   -Port 7420 `
-  -Password "change-me" `
-  -OpenFirewall `
-  -StartNow
+  -Password 'change-me'
+```
+
+### If You Already Downloaded The Repo
+
+You can also run the repo-local one-command setup:
+
+```powershell
+.\setup.ps1
+```
+
+Or with npm:
+
+```powershell
+npm run setup:windows
 ```
 
 ---

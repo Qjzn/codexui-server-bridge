@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
   [string]$ProjectPath = "",
+  [switch]$CreateProjectPath,
   [int]$Port = 7420,
   [string]$BindHost = "0.0.0.0",
   [string]$Password = "",
@@ -15,10 +16,19 @@ param(
   [string]$FirewallRuleName = "",
   [switch]$SkipNpmInstall,
   [switch]$SkipBuild,
+  [switch]$EnsureCodexLogin,
+  [switch]$CreateStartupTask,
+  [string]$TaskName = "",
   [switch]$StartNow
 )
 
 $ErrorActionPreference = "Stop"
+
+function Write-Step {
+  param([string]$Message)
+  Write-Host ""
+  Write-Host "==> $Message" -ForegroundColor Cyan
+}
 
 function New-StablePassword {
   $alphabet = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -39,29 +49,275 @@ function Resolve-OptionalPath {
   return $Value
 }
 
+function Resolve-NpmExecutable {
+  param([System.Management.Automation.CommandInfo]$CommandInfo)
+
+  $source = $CommandInfo.Source
+  if ($source -like "*.ps1") {
+    $cmdCandidate = [System.IO.Path]::ChangeExtension($source, ".cmd")
+    if (Test-Path -LiteralPath $cmdCandidate) {
+      return $cmdCandidate
+    }
+  }
+  return $source
+}
+
+function Ensure-ProjectDirectory {
+  param(
+    [string]$TargetPath,
+    [bool]$CreateIfMissing
+  )
+
+  if ([string]::IsNullOrWhiteSpace($TargetPath)) {
+    return $null
+  }
+
+  $resolved = Resolve-OptionalPath -Value $TargetPath
+  if (Test-Path -LiteralPath $resolved) {
+    $item = Get-Item -LiteralPath $resolved
+    if (-not $item.PSIsContainer) {
+      throw "Path exists but is not a directory: $resolved"
+    }
+    return $item.FullName
+  }
+
+  if (-not $CreateIfMissing) {
+    throw "Directory does not exist: $resolved"
+  }
+
+  New-Item -ItemType Directory -Path $resolved -Force | Out-Null
+  return (Resolve-Path -LiteralPath $resolved).Path
+}
+
+function Get-AccessibleUrls {
+  param(
+    [string]$BindHostValue,
+    [int]$TargetPort
+  )
+
+  $urls = New-Object 'System.Collections.Generic.List[string]'
+  if ([string]::IsNullOrWhiteSpace($BindHostValue) -or $BindHostValue -eq "0.0.0.0" -or $BindHostValue -eq "::") {
+    $urls.Add("http://localhost:$TargetPort/")
+    try {
+      $addresses = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
+        Where-Object {
+          $_.IPAddress -ne "127.0.0.1" -and
+          $_.IPAddress -notlike "169.254*" -and
+          $_.PrefixOrigin -ne "WellKnown"
+        } |
+        Select-Object -ExpandProperty IPAddress -Unique
+      foreach ($address in $addresses) {
+        $urls.Add("http://$address`:$TargetPort/")
+      }
+    } catch {}
+  } elseif ($BindHostValue -eq "localhost" -or $BindHostValue -eq "127.0.0.1") {
+    $urls.Add("http://localhost:$TargetPort/")
+  } else {
+    $urls.Add("http://$BindHostValue`:$TargetPort/")
+  }
+  $urls | Select-Object -Unique
+}
+
+function Get-CodexAuthPath {
+  Join-Path $env:USERPROFILE ".codex\auth.json"
+}
+
+function Ensure-CodexLogin {
+  param(
+    [string]$NodePath,
+    [string]$RepoRoot
+  )
+
+  $authPath = Get-CodexAuthPath
+  if (Test-Path -LiteralPath $authPath) {
+    Write-Host "Codex auth already present: $authPath"
+    return
+  }
+
+  Write-Step "Codex login required"
+  Write-Host "No Codex auth was found, so login will open once in this console."
+  & $NodePath "$RepoRoot\dist-cli\index.js" login
+  if ($LASTEXITCODE -ne 0) {
+    throw "Codex login failed with exit code $LASTEXITCODE"
+  }
+}
+
+function Stop-ExistingCodexUiProcesses {
+  param(
+    [int]$TargetPort,
+    [string]$RepoRoot,
+    [string]$TargetLauncherPath,
+    [string]$TargetConfigPath
+  )
+
+  $managedProcessIds = New-Object 'System.Collections.Generic.HashSet[int]'
+  $launcherLeaf = if ([string]::IsNullOrWhiteSpace($TargetLauncherPath)) { "" } else { Split-Path -Leaf $TargetLauncherPath }
+
+  try {
+    $processes = Get-CimInstance Win32_Process -ErrorAction Stop
+    foreach ($processInfo in $processes) {
+      $processId = [int]$processInfo.ProcessId
+      if (-not $processId -or $processId -eq $PID) {
+        continue
+      }
+
+      $commandLine = [string]$processInfo.CommandLine
+      if ([string]::IsNullOrWhiteSpace($commandLine)) {
+        continue
+      }
+
+      $isManagedCodexUi =
+        $commandLine -like "*dist-cli\index.js*" -and (
+          $commandLine -like "*$RepoRoot*" -or
+          $commandLine -like "*$TargetConfigPath*" -or
+          (-not [string]::IsNullOrWhiteSpace($TargetLauncherPath) -and $commandLine -like "*$TargetLauncherPath*") -or
+          (-not [string]::IsNullOrWhiteSpace($launcherLeaf) -and $commandLine -like "*$launcherLeaf*")
+        )
+
+      if ($isManagedCodexUi) {
+        $managedProcessIds.Add($processId) | Out-Null
+      }
+    }
+  } catch {}
+
+  try {
+    $listeners = Get-NetTCPConnection -State Listen -LocalPort $TargetPort -ErrorAction Stop |
+      Select-Object -ExpandProperty OwningProcess -Unique
+  } catch {
+    $listeners = @()
+  }
+
+  foreach ($processId in $listeners) {
+    if (-not $processId -or $processId -eq $PID) {
+      continue
+    }
+
+    $processInfo = Get-CimInstance Win32_Process -Filter "ProcessId = $processId" -ErrorAction SilentlyContinue
+    if (-not $processInfo) {
+      continue
+    }
+
+    if (-not $managedProcessIds.Contains([int]$processId)) {
+      Write-Warning "Port $TargetPort is already occupied by PID $processId ($($processInfo.Name)). Not stopping it automatically."
+      return $false
+    }
+  }
+
+  foreach ($managedProcessId in $managedProcessIds) {
+    Write-Host "Stopping previous codexui process (PID $managedProcessId)..."
+    Stop-Process -Id $managedProcessId -Force -ErrorAction SilentlyContinue
+  }
+
+  Start-Sleep -Seconds 1
+  return $true
+}
+
+function Create-LauncherFile {
+  param(
+    [string]$TargetLauncherPath,
+    [string]$NodePath,
+    [string]$RepoRoot,
+    [string]$TargetConfigPath
+  )
+
+  $launcherDir = Split-Path -Parent $TargetLauncherPath
+  if (-not [string]::IsNullOrWhiteSpace($launcherDir)) {
+    New-Item -ItemType Directory -Path $launcherDir -Force | Out-Null
+  }
+
+  $launcherContent = @"
+@echo off
+setlocal
+set "CODEXUI_LOG_DIR=%USERPROFILE%\.codexui\logs"
+if not exist "%CODEXUI_LOG_DIR%" mkdir "%CODEXUI_LOG_DIR%"
+cd /d "$RepoRoot"
+"$NodePath" "$RepoRoot\dist-cli\index.js" --config "$TargetConfigPath" >>"%CODEXUI_LOG_DIR%\codexui.out.log" 2>>"%CODEXUI_LOG_DIR%\codexui.err.log"
+"@
+
+  Set-Content -LiteralPath $TargetLauncherPath -Value $launcherContent -Encoding ASCII
+}
+
+function Register-StartupTask {
+  param(
+    [string]$ResolvedTaskName,
+    [string]$TargetLauncherPath
+  )
+
+  $taskRun = "cmd.exe /c `"$TargetLauncherPath`""
+  $output = & schtasks.exe /Create /F /SC ONLOGON /RL HIGHEST /TN $ResolvedTaskName /TR $taskRun 2>&1
+  if ($LASTEXITCODE -ne 0) {
+    $details = ($output | Out-String).Trim()
+    throw "Failed to create scheduled task $ResolvedTaskName. $details"
+  }
+}
+
+function Test-HealthEndpoint {
+  param([int]$TargetPort)
+  try {
+    $response = Invoke-WebRequest -Uri "http://127.0.0.1:$TargetPort/health" -UseBasicParsing -TimeoutSec 5
+    return $response.Content
+  } catch {
+    return $null
+  }
+}
+
+function Wait-ForHealthEndpoint {
+  param(
+    [int]$TargetPort,
+    [int]$TimeoutSeconds = 30
+  )
+
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  do {
+    $content = Test-HealthEndpoint -TargetPort $TargetPort
+    if ($content) {
+      return $content
+    }
+    Start-Sleep -Seconds 2
+  } while ((Get-Date) -lt $deadline)
+
+  return $null
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $nodeCommand = Get-Command node -ErrorAction Stop
-$npmCommand = Get-Command npm -ErrorAction Stop
+$npmCommandInfo = Get-Command npm -ErrorAction Stop
+$npmExecutable = Resolve-NpmExecutable -CommandInfo $npmCommandInfo
 
 Write-Host "Using repo root: $repoRoot"
 Write-Host "Using node: $($nodeCommand.Source)"
-Write-Host "Using npm:  $($npmCommand.Source)"
+Write-Host "Using npm:  $npmExecutable"
 
-if (-not $SkipNpmInstall) {
-  Write-Host ""
-  Write-Host "Installing npm dependencies..."
-  & $npmCommand.Source install --no-fund
+Push-Location $repoRoot
+try {
+  $env:npm_config_loglevel = "error"
+  $env:npm_config_fund = "false"
+  $env:npm_config_audit = "false"
+
+  if (-not $SkipNpmInstall) {
+    Write-Step "Installing npm dependencies"
+    $installCommand = if (Test-Path -LiteralPath (Join-Path $repoRoot "package-lock.json")) { "ci" } else { "install" }
+    & $npmExecutable $installCommand
+    if ($LASTEXITCODE -ne 0) {
+      throw "npm $installCommand failed with exit code $LASTEXITCODE"
+    }
+  }
+
+  if (-not $SkipBuild) {
+    Write-Step "Building codexui"
+    & $npmExecutable run build
+    if ($LASTEXITCODE -ne 0) {
+      throw "npm run build failed with exit code $LASTEXITCODE"
+    }
+  }
+} finally {
+  Pop-Location
 }
 
-if (-not $SkipBuild) {
-  Write-Host ""
-  Write-Host "Building codexui..."
-  & $npmCommand.Source run build
-}
-
-$resolvedProjectPath = Resolve-OptionalPath -Value $ProjectPath
+$resolvedProjectPath = Ensure-ProjectDirectory -TargetPath $ProjectPath -CreateIfMissing:$CreateProjectPath.IsPresent
 $resolvedCodexCommand = Resolve-OptionalPath -Value $CodexCommand
 $resolvedRipgrepCommand = Resolve-OptionalPath -Value $RipgrepCommand
+$resolvedTaskName = if ([string]::IsNullOrWhiteSpace($TaskName)) { "CodexUI-$Port" } else { $TaskName }
 
 if ($NoPassword) {
   $passwordValue = $false
@@ -69,6 +325,10 @@ if ($NoPassword) {
   $passwordValue = New-StablePassword
 } else {
   $passwordValue = $Password
+}
+
+if ($EnsureCodexLogin) {
+  Ensure-CodexLogin -NodePath $nodeCommand.Source -RepoRoot $repoRoot
 }
 
 $configDir = Split-Path -Parent $ConfigPath
@@ -95,22 +355,25 @@ if ($resolvedRipgrepCommand) {
 }
 
 $configJson = $config | ConvertTo-Json -Depth 5
-Set-Content -LiteralPath $ConfigPath -Value $configJson -Encoding UTF8
+[System.IO.File]::WriteAllText(
+  $ConfigPath,
+  $configJson,
+  (New-Object System.Text.UTF8Encoding($false))
+)
+Create-LauncherFile -TargetLauncherPath $LauncherPath -NodePath $nodeCommand.Source -RepoRoot $repoRoot -TargetConfigPath $ConfigPath
 
-$launcherDir = Split-Path -Parent $LauncherPath
-if (-not [string]::IsNullOrWhiteSpace($launcherDir)) {
-  New-Item -ItemType Directory -Path $launcherDir -Force | Out-Null
+if ($CreateStartupTask) {
+  Write-Step "Creating startup task"
+  try {
+    Register-StartupTask -ResolvedTaskName $resolvedTaskName -TargetLauncherPath $LauncherPath
+    Write-Host "Scheduled task created: $resolvedTaskName"
+  } catch {
+    Write-Warning $_
+  }
 }
 
-$launcherContent = @"
-@echo off
-setlocal
-cd /d "$repoRoot"
-"$($nodeCommand.Source)" "$repoRoot\dist-cli\index.js" --config "$ConfigPath"
-"@
-Set-Content -LiteralPath $LauncherPath -Value $launcherContent -Encoding ASCII
-
 if ($OpenFirewall) {
+  Write-Step "Opening firewall port"
   $ruleName = if ([string]::IsNullOrWhiteSpace($FirewallRuleName)) { "codexui-$Port" } else { $FirewallRuleName }
   try {
     $existingRule = Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue
@@ -124,20 +387,44 @@ if ($OpenFirewall) {
   }
 }
 
+$healthPayload = $null
+if ($StartNow) {
+  Write-Step "Starting codexui"
+  $canStart = Stop-ExistingCodexUiProcesses -TargetPort $Port -RepoRoot $repoRoot -TargetLauncherPath $LauncherPath -TargetConfigPath $ConfigPath
+  if ($canStart) {
+    Start-Process -FilePath $LauncherPath | Out-Null
+    $healthPayload = Wait-ForHealthEndpoint -TargetPort $Port
+  } else {
+    Write-Warning "Skipped auto-start because port $Port is already in use by another process."
+  }
+}
+
+$logDir = "$env:USERPROFILE\.codexui\logs"
+$accessUrls = Get-AccessibleUrls -BindHostValue $BindHost -TargetPort $Port
+
 Write-Host ""
 Write-Host "Install complete."
 Write-Host "Config:   $ConfigPath"
 Write-Host "Launcher: $LauncherPath"
-Write-Host "Browse:   http://localhost:$Port/"
-Write-Host "Health:   http://localhost:$Port/health"
+Write-Host "Logs:     $logDir"
+if ($resolvedProjectPath) {
+  Write-Host "Project:  $resolvedProjectPath"
+}
+foreach ($url in $accessUrls) {
+  Write-Host "Browse:   $url"
+}
+Write-Host "Health:   http://127.0.0.1:$Port/health"
+Write-Host "Bridge:   http://127.0.0.1:$Port/codex-api/health"
 if ($passwordValue -is [string]) {
   Write-Host "Password: $passwordValue"
 } elseif ($passwordValue -eq $false) {
   Write-Host "Password: disabled"
 }
-
-if ($StartNow) {
-  Write-Host ""
-  Write-Host "Starting codexui..."
-  Start-Process -FilePath $LauncherPath
+if ($CreateStartupTask) {
+  Write-Host "Task:     $resolvedTaskName"
+}
+if ($healthPayload) {
+  Write-Host "Status:   health check passed"
+} elseif ($StartNow) {
+  Write-Warning "Health check did not succeed yet. If this is the first run, check the browser login flow or logs in $logDir."
 }
