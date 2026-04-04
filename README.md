@@ -294,6 +294,12 @@ Bot commands:
 ## 🧩 Recent Product Features (from main commits)
 > **Not just launch. Actual UX upgrades.**
 
+- ⬇️ Conversation view no longer yanks you to the bottom while you are reading history; auto-follow now resumes only when you are already at the latest output
+- 🛟 Floating "back to latest output" button appears when you scroll up, with a visual cue when fresh output arrives below the fold
+- ⏳ Thread loading is less disruptive: existing messages stay visible and a lightweight inline sync bar replaces the old blocking-only loading state
+- 🔄 Thread status tracking is more robust during long-running tasks, with background reconciliation to reduce false "completed" states in the sidebar
+- 📡 Notification transport is more resilient now, with client-side reconnect handling and server-side WebSocket heartbeats to recover from stale streams
+- ⚠️ Refreshing the official desktop app now warns when the current thread still looks busy, to reduce accidental task interruption
 - 🗂️ Searchable project picker in new-thread flow
 - ➕ Inline "Add new project" input inside picker (no browser prompt)
 - 📌 New projects get pinned to top automatically

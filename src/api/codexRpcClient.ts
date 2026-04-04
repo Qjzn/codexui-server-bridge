@@ -21,6 +21,10 @@ type ServerRequestReplyBody = {
   }
 }
 
+const WS_OPEN_TIMEOUT_MS = 2500
+const RECONNECT_BASE_DELAY_MS = 1000
+const RECONNECT_MAX_DELAY_MS = 8000
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -146,81 +150,167 @@ export function subscribeRpcNotifications(onNotification: (value: RpcNotificatio
     return () => {}
   }
 
+  type Transport = 'ws' | 'sse'
+
   let cleanup: (() => void) | null = null
   let closed = false
+  let reconnectTimer: number | null = null
+  let reconnectAttempt = 0
+  let activeAttempt = 0
 
-  const attachSse = () => {
-    if (typeof EventSource === 'undefined' || closed) return
-    const source = new EventSource('/codex-api/events')
+  const preferredTransport = (): Transport => (typeof WebSocket !== 'undefined' ? 'ws' : 'sse')
 
-    source.onmessage = (event) => {
-      try {
-        const parsed = JSON.parse(event.data) as unknown
-        const notification = toNotification(parsed)
-        if (notification) {
-          onNotification(notification)
-        }
-      } catch {
-        // Ignore malformed event payloads and keep stream alive.
-      }
+  const clearReconnectTimer = () => {
+    if (reconnectTimer !== null) {
+      window.clearTimeout(reconnectTimer)
+      reconnectTimer = null
     }
-    cleanup = () => source.close()
   }
 
-  if (typeof WebSocket !== 'undefined') {
+  const clearActiveTransport = () => {
+    const currentCleanup = cleanup
+    cleanup = null
+    currentCleanup?.()
+  }
+
+  const isStaleAttempt = (attemptId: number): boolean => closed || attemptId !== activeAttempt
+
+  const handleNotificationPayload = (payload: string): void => {
+    try {
+      const parsed = JSON.parse(payload) as unknown
+      const notification = toNotification(parsed)
+      if (notification) {
+        onNotification(notification)
+      }
+    } catch {
+      // Ignore malformed event payloads and keep stream alive.
+    }
+  }
+
+  const scheduleReconnect = (transport: Transport) => {
+    if (closed || reconnectTimer !== null) return
+    const delay = Math.min(
+      RECONNECT_BASE_DELAY_MS * (2 ** Math.min(reconnectAttempt, 3)),
+      RECONNECT_MAX_DELAY_MS,
+    )
+    reconnectAttempt += 1
+    reconnectTimer = window.setTimeout(() => {
+      reconnectTimer = null
+      connect(transport)
+    }, delay)
+  }
+
+  const attachSse = (attemptId: number) => {
+    if (typeof EventSource === 'undefined' || isStaleAttempt(attemptId)) return
+    const source = new EventSource('/codex-api/events')
+    cleanup = () => source.close()
+
+    source.onopen = () => {
+      if (isStaleAttempt(attemptId)) return
+      reconnectAttempt = 0
+    }
+
+    source.onmessage = (event) => {
+      if (isStaleAttempt(attemptId)) return
+      handleNotificationPayload(event.data)
+    }
+
+    source.onerror = () => {
+      if (isStaleAttempt(attemptId)) return
+      if (source.readyState !== EventSource.CLOSED) return
+      source.close()
+      scheduleReconnect(preferredTransport())
+    }
+  }
+
+  const attachWebSocketTransport = (attemptId: number) => {
+    if (typeof WebSocket === 'undefined') {
+      attachSse(attemptId)
+      return
+    }
+
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const socket = new WebSocket(`${protocol}//${window.location.host}/codex-api/ws`)
     let didOpen = false
     let fallbackTimer: number | null = window.setTimeout(() => {
-      if (didOpen || closed) return
-      socket.close()
-      attachSse()
-    }, 2500)
+      if (isStaleAttempt(attemptId) || didOpen) return
+      if (socket.readyState < 2) {
+        socket.close()
+      }
+      connect('sse')
+    }, WS_OPEN_TIMEOUT_MS)
 
-    socket.onopen = () => {
-      didOpen = true
+    const clearFallbackTimer = () => {
       if (fallbackTimer !== null) {
         window.clearTimeout(fallbackTimer)
         fallbackTimer = null
       }
+    }
+
+    cleanup = () => {
+      clearFallbackTimer()
+      if (socket.readyState < 2) {
+        socket.close()
+      }
+    }
+
+    socket.onopen = () => {
+      if (isStaleAttempt(attemptId)) {
+        cleanup?.()
+        return
+      }
+      didOpen = true
+      reconnectAttempt = 0
+      clearFallbackTimer()
     }
 
     socket.onmessage = (event) => {
-      try {
-        const parsed = JSON.parse(String(event.data)) as unknown
-        const notification = toNotification(parsed)
-        if (notification) {
-          onNotification(notification)
-        }
-      } catch {
-        // Ignore malformed event payloads and keep stream alive.
-      }
+      if (isStaleAttempt(attemptId)) return
+      handleNotificationPayload(String(event.data))
     }
 
     socket.onerror = () => {
-      if (!didOpen && !closed) {
-        attachSse()
+      if (isStaleAttempt(attemptId)) return
+      if (didOpen) return
+      clearFallbackTimer()
+      if (socket.readyState < 2) {
+        socket.close()
       }
+      connect('sse')
     }
 
     socket.onclose = () => {
-      if (fallbackTimer !== null) {
-        window.clearTimeout(fallbackTimer)
-        fallbackTimer = null
+      if (isStaleAttempt(attemptId)) return
+      clearFallbackTimer()
+      if (!didOpen) {
+        connect('sse')
+        return
       }
-      if (!didOpen && !closed) {
-        attachSse()
-      }
+      scheduleReconnect('ws')
+    }
+  }
+
+  const connect = (transport: Transport) => {
+    if (closed) return
+    clearReconnectTimer()
+    activeAttempt += 1
+    const attemptId = activeAttempt
+    clearActiveTransport()
+
+    if (transport === 'ws') {
+      attachWebSocketTransport(attemptId)
+      return
     }
 
-    cleanup = () => socket.close()
-  } else {
-    attachSse()
+    attachSse(attemptId)
   }
+
+  connect(preferredTransport())
 
   return () => {
     closed = true
-    cleanup?.()
+    clearReconnectTimer()
+    clearActiveTransport()
   }
 }
 

@@ -48,6 +48,26 @@ function flattenThreads(groups: UiProjectGroup[]): UiThread[] {
   return groups.flatMap((group) => group.threads)
 }
 
+function shouldRefreshMessagesFromNotification(method: string): boolean {
+  return (
+    method === 'turn/started' ||
+    method === 'turn/completed' ||
+    method === 'error' ||
+    method === 'server/request' ||
+    method === 'server/request/resolved' ||
+    method.startsWith('thread/')
+  )
+}
+
+function shouldRefreshThreadListFromNotification(method: string): boolean {
+  return (
+    method === 'turn/started' ||
+    method === 'turn/completed' ||
+    method === 'thread/name/updated' ||
+    method.startsWith('thread/')
+  )
+}
+
 const READ_STATE_STORAGE_KEY = 'codex-web-local.thread-read-state.v1'
 const SCROLL_STATE_STORAGE_KEY = 'codex-web-local.thread-scroll-state.v1'
 const SELECTED_THREAD_STORAGE_KEY = 'codex-web-local.selected-thread-id.v1'
@@ -55,6 +75,10 @@ const SELECTED_MODEL_STORAGE_KEY = 'codex-web-local.selected-model-id.v1'
 const PROJECT_ORDER_STORAGE_KEY = 'codex-web-local.project-order.v1'
 const PROJECT_DISPLAY_NAME_STORAGE_KEY = 'codex-web-local.project-display-name.v1'
 const EVENT_SYNC_DEBOUNCE_MS = 220
+const BACKGROUND_SYNC_INTERVAL_MS = 4000
+const ACTIVE_THREAD_DETAIL_SYNC_INTERVAL_MS = 4000
+const NOTIFICATION_STALE_MS = 10000
+const THREAD_LIST_REFRESH_INTERVAL_MS = 30000
 const RATE_LIMIT_REFRESH_DEBOUNCE_MS = 500
 const REASONING_EFFORT_OPTIONS: ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']
 const GLOBAL_SERVER_REQUEST_SCOPE = '__global__'
@@ -667,6 +691,7 @@ export function useDesktopState() {
   const projectDisplayNameById = ref<Record<string, string>>(loadProjectDisplayNames())
   const loadedVersionByThreadId = ref<Record<string, string>>({})
   const loadedMessagesByThreadId = ref<Record<string, boolean>>({})
+  const lastThreadDetailSyncAtById = ref<Record<string, number>>({})
   const resumedThreadById = ref<Record<string, boolean>>({})
   const turnSummaryByThreadId = ref<Record<string, TurnSummaryState>>({})
   const turnActivityByThreadId = ref<Record<string, TurnActivityState>>({})
@@ -690,9 +715,12 @@ export function useDesktopState() {
   const isPolling = ref(false)
   const hasLoadedThreads = ref(false)
   let stopNotificationStream: (() => void) | null = null
+  let backgroundSyncTimer: number | null = null
   let eventSyncTimer: number | null = null
   let rateLimitRefreshTimer: number | null = null
   let rateLimitRefreshPromise: Promise<void> | null = null
+  let lastNotificationAtMs = Date.now()
+  let lastThreadListSyncAtMs = 0
   let pendingThreadsRefresh = false
   const pendingThreadMessageRefresh = new Set<string>()
   let hasHydratedWorkspaceRootsState = false
@@ -702,6 +730,14 @@ export function useDesktopState() {
   const fallbackRetryInFlightThreadIds = new Set<string>()
   const isWorktreeGitAutomationEnabled = ref(true)
 
+  const sourceThreads = computed(() => flattenThreads(sourceGroups.value))
+  const sourceThreadById = computed<Record<string, UiThread>>(() => {
+    const next: Record<string, UiThread> = {}
+    for (const thread of sourceThreads.value) {
+      next[thread.id] = thread
+    }
+    return next
+  })
   const allThreads = computed(() => flattenThreads(projectGroups.value))
   const selectedThread = computed(() =>
     allThreads.value.find((thread) => thread.id === selectedThreadId.value) ?? null,
@@ -727,8 +763,9 @@ export function useDesktopState() {
     const activity = turnActivityByThreadId.value[threadId]
     const reasoningText = (liveReasoningTextByThreadId.value[threadId] ?? '').trim()
     const errorText = (turnErrorByThreadId.value[threadId]?.message ?? '').trim()
+    const isInProgress = isThreadExecutionActive(threadId)
 
-    if (!activity && !reasoningText && !errorText) return null
+    if (!activity && !reasoningText && !errorText && !isInProgress) return null
     return {
       activityLabel: activity?.label || 'Thinking',
       activityDetails: activity?.details ?? [],
@@ -1016,7 +1053,7 @@ export function useDesktopState() {
     const flaggedGroups: UiProjectGroup[] = withTitles.map((group) => ({
       projectName: group.projectName,
       threads: group.threads.map((thread) => {
-        const inProgress = inProgressById.value[thread.id] === true
+        const inProgress = isThreadExecutionActive(thread.id)
         const isSelected = selectedThreadId.value === thread.id
         const lastReadIso = readStateByThreadId.value[thread.id]
         const unreadByEvent = eventUnreadByThreadId.value[thread.id] === true
@@ -1107,7 +1144,7 @@ export function useDesktopState() {
   }
 
   function markThreadAsRead(threadId: string): void {
-    const thread = flattenThreads(sourceGroups.value).find((row) => row.id === threadId)
+    const thread = sourceThreadById.value[threadId]
     if (!thread) return
 
     readStateByThreadId.value = {
@@ -1212,8 +1249,59 @@ export function useDesktopState() {
     }
   }
 
+  function hasRunningLiveCommand(threadId: string): boolean {
+    return (liveCommandsByThreadId.value[threadId] ?? [])
+      .some((message) => message.commandExecution?.status === 'inProgress')
+  }
+
+  function hasQueuedThreadWork(threadId: string): boolean {
+    if (!threadId) return false
+    if (pendingTurnRequestByThreadId.value[threadId]) return true
+    if (queueProcessingByThreadId.value[threadId] === true) return true
+    return (queuedMessagesByThreadId.value[threadId] ?? []).length > 0
+  }
+
+  function isThreadExecutionActive(threadId: string): boolean {
+    if (!threadId) return false
+    if (inProgressById.value[threadId] === true) return true
+
+    const activeTurnId = activeTurnIdByThreadId.value[threadId]
+    if (typeof activeTurnId === 'string' && activeTurnId.trim().length > 0) return true
+
+    if (turnActivityByThreadId.value[threadId]) return true
+
+    const reasoningText = liveReasoningTextByThreadId.value[threadId] ?? ''
+    if (reasoningText.trim().length > 0) return true
+
+    if (hasRunningLiveCommand(threadId)) return true
+    if (hasQueuedThreadWork(threadId)) return true
+    return false
+  }
+
+  function reconcileLiveThreadState(threadId: string, inProgress: boolean): void {
+    if (!threadId) return
+
+    if (inProgress) {
+      if (!turnActivityByThreadId.value[threadId]) {
+        const hasRunningCommand = (liveCommandsByThreadId.value[threadId] ?? [])
+          .some((message) => message.commandExecution?.status === 'inProgress')
+        setTurnActivityForThread(threadId, {
+          label: hasRunningCommand ? 'Running command' : 'Thinking',
+          details: [],
+        })
+      }
+      return
+    }
+
+    setTurnActivityForThread(threadId, null)
+    clearLiveReasoningForThread(threadId)
+    if (liveCommandsByThreadId.value[threadId]) {
+      liveCommandsByThreadId.value = omitKey(liveCommandsByThreadId.value, threadId)
+    }
+  }
+
   function currentThreadVersion(threadId: string): string {
-    const thread = flattenThreads(sourceGroups.value).find((row) => row.id === threadId)
+    const thread = sourceThreadById.value[threadId]
     return thread?.updatedAtIso ?? ''
   }
 
@@ -1243,6 +1331,12 @@ export function useDesktopState() {
       [threadId]: normalizedState,
     }
     saveThreadScrollStateMap(scrollStateByThreadId.value)
+  }
+
+  function shouldKeepThreadPinnedToBottom(threadId: string): boolean {
+    if (!threadId || !shouldAutoScrollOnNextAgentEvent) return false
+    const scrollState = scrollStateByThreadId.value[threadId]
+    return !scrollState || scrollState.isAtBottom === true
   }
 
   function setPersistedMessagesForThread(threadId: string, nextMessages: UiMessage[]): void {
@@ -2032,7 +2126,7 @@ export function useDesktopState() {
     }
 
     if (isAgentContentEvent(notification)) {
-      if (shouldAutoScrollOnNextAgentEvent && selectedThreadId.value) {
+      if (shouldKeepThreadPinnedToBottom(selectedThreadId.value)) {
         setThreadScrollState(selectedThreadId.value, {
           scrollTop: 0,
           isAtBottom: true,
@@ -2066,18 +2160,19 @@ export function useDesktopState() {
 
   function queueEventDrivenSync(notification: RpcNotification): void {
     const threadId = extractThreadIdFromNotification(notification)
-    if (threadId) {
+    const method = notification.method
+    const shouldRefreshMessages = shouldRefreshMessagesFromNotification(method)
+    const shouldRefreshThreads = shouldRefreshThreadListFromNotification(method)
+
+    if (threadId && shouldRefreshMessages) {
       pendingThreadMessageRefresh.add(threadId)
     }
 
-    const method = notification.method
-    if (
-      method.startsWith('thread/') ||
-      method.startsWith('turn/') ||
-      method.startsWith('item/')
-    ) {
+    if (shouldRefreshThreads) {
       pendingThreadsRefresh = true
     }
+
+    if (!shouldRefreshMessages && !shouldRefreshThreads) return
 
     if (eventSyncTimer !== null || typeof window === 'undefined') return
     eventSyncTimer = window.setTimeout(() => {
@@ -2170,16 +2265,20 @@ export function useDesktopState() {
       }
 
       const orderedGroups = orderGroupsByProjectOrder(groups, projectOrder.value)
+      const executionStateByThreadId = Object.fromEntries(
+        sourceThreads.value.map((thread) => [thread.id, isThreadExecutionActive(thread.id)]),
+      ) as Record<string, boolean>
       const mergedWithInProgress = mergeIncomingWithLocalInProgressThreads(
         sourceGroups.value,
         orderedGroups,
-        inProgressById.value,
+        executionStateByThreadId,
       )
       sourceGroups.value = mergeThreadGroups(sourceGroups.value, mergedWithInProgress)
       inProgressById.value = pruneThreadStateMap(
         inProgressById.value,
         new Set(flattenThreads(sourceGroups.value).map((thread) => thread.id)),
       )
+      lastThreadListSyncAtMs = Date.now()
       applyThreadFlags()
       hasLoadedThreads.value = true
 
@@ -2232,6 +2331,10 @@ export function useDesktopState() {
         ...loadedMessagesByThreadId.value,
         [threadId]: true,
       }
+      lastThreadDetailSyncAtById.value = {
+        ...lastThreadDetailSyncAtById.value,
+        [threadId]: Date.now(),
+      }
 
       const version = currentThreadVersion(threadId)
       if (version) {
@@ -2241,6 +2344,7 @@ export function useDesktopState() {
         }
       }
       setThreadInProgress(threadId, inProgress)
+      reconcileLiveThreadState(threadId, inProgress)
       if (activeTurnId) {
         activeTurnIdByThreadId.value = {
           ...activeTurnIdByThreadId.value,
@@ -2326,7 +2430,7 @@ export function useDesktopState() {
     const sourceThreadId = threadId.trim()
     if (!sourceThreadId) return ''
 
-    const sourceThread = flattenThreads(sourceGroups.value).find((row) => row.id === sourceThreadId)
+    const sourceThread = sourceThreadById.value[sourceThreadId]
     const sourceCwd = sourceThread?.cwd?.trim() ?? ''
     const sourceTitle = sourceThread?.title?.trim() ?? 'Forked chat'
     const selectedModel = selectedModelId.value.trim()
@@ -2805,12 +2909,16 @@ export function useDesktopState() {
     }
   }
 
-  async function syncThreadStatus(): Promise<void> {
+  async function syncThreadStatus(options: { includeThreadList?: boolean; forceMessageRefresh?: boolean } = {}): Promise<void> {
     if (isPolling.value) return
     isPolling.value = true
+    const includeThreadList = options.includeThreadList !== false
+    const forceMessageRefresh = options.forceMessageRefresh === true
 
     try {
-      await loadThreads()
+      if (includeThreadList) {
+        await loadThreads()
+      }
 
       if (!selectedThreadId.value) return
 
@@ -2818,9 +2926,8 @@ export function useDesktopState() {
       const currentVersion = currentThreadVersion(threadId)
       const loadedVersion = loadedVersionByThreadId.value[threadId] ?? ''
       const hasVersionChange = currentVersion.length > 0 && currentVersion !== loadedVersion
-      const isInProgress = inProgressById.value[threadId] === true
 
-      if (isInProgress || hasVersionChange) {
+      if (forceMessageRefresh || hasVersionChange) {
         await loadMessages(threadId, { silent: true })
       }
     } catch {
@@ -2828,6 +2935,36 @@ export function useDesktopState() {
     } finally {
       isPolling.value = false
     }
+  }
+
+  function scheduleBackgroundSync(): void {
+    if (typeof window === 'undefined' || backgroundSyncTimer !== null) return
+    backgroundSyncTimer = window.setInterval(() => {
+      const now = Date.now()
+      const activeThreadId = selectedThreadId.value
+      const isInProgress = activeThreadId ? isThreadExecutionActive(activeThreadId) : false
+      const lastDetailSyncAt = activeThreadId ? (lastThreadDetailSyncAtById.value[activeThreadId] ?? 0) : 0
+      const notificationStale = now - lastNotificationAtMs >= NOTIFICATION_STALE_MS
+      const shouldRefreshMessages =
+        Boolean(activeThreadId) &&
+        isInProgress &&
+        (
+          notificationStale ||
+          now - lastDetailSyncAt >= ACTIVE_THREAD_DETAIL_SYNC_INTERVAL_MS
+        )
+      const shouldRefreshThreads =
+        now - lastThreadListSyncAtMs >= THREAD_LIST_REFRESH_INTERVAL_MS &&
+        (notificationStale || isInProgress || !activeThreadId)
+
+      if (!shouldRefreshThreads && !shouldRefreshMessages) {
+        return
+      }
+
+      void syncThreadStatus({
+        includeThreadList: shouldRefreshThreads,
+        forceMessageRefresh: shouldRefreshMessages,
+      })
+    }, BACKGROUND_SYNC_INTERVAL_MS)
   }
 
   async function syncFromNotifications(): Promise<void> {
@@ -2857,12 +2994,11 @@ export function useDesktopState() {
       if (!activeThreadId) return
 
       const isActiveDirty = threadIdsToRefresh.has(activeThreadId)
-      const isInProgress = inProgressById.value[activeThreadId] === true
       const currentVersion = currentThreadVersion(activeThreadId)
       const loadedVersion = loadedVersionByThreadId.value[activeThreadId] ?? ''
       const hasVersionChange = currentVersion.length > 0 && currentVersion !== loadedVersion
 
-      if (isActiveDirty || isInProgress || hasVersionChange || shouldRefreshThreads) {
+      if (isActiveDirty || hasVersionChange || shouldRefreshThreads) {
         await loadMessages(activeThreadId, { silent: true })
       }
     } catch {
@@ -2888,7 +3024,9 @@ export function useDesktopState() {
 
     if (stopNotificationStream) return
     void loadPendingServerRequestsFromBridge()
+    scheduleBackgroundSync()
     stopNotificationStream = subscribeCodexNotifications((notification) => {
+      lastNotificationAtMs = Date.now()
       applyRealtimeUpdates(notification)
       queueEventDrivenSync(notification)
     })
@@ -2925,6 +3063,10 @@ export function useDesktopState() {
       stopNotificationStream()
       stopNotificationStream = null
     }
+    if (backgroundSyncTimer !== null && typeof window !== 'undefined') {
+      window.clearInterval(backgroundSyncTimer)
+      backgroundSyncTimer = null
+    }
 
     pendingThreadsRefresh = false
     pendingThreadMessageRefresh.clear()
@@ -2939,6 +3081,7 @@ export function useDesktopState() {
     }
     activeReasoningItemId = ''
     shouldAutoScrollOnNextAgentEvent = false
+    lastNotificationAtMs = Date.now()
     persistedMessagesByThreadId.value = {}
     liveAgentMessagesByThreadId.value = {}
     liveReasoningTextByThreadId.value = {}
@@ -2947,6 +3090,7 @@ export function useDesktopState() {
     turnSummaryByThreadId.value = {}
     turnErrorByThreadId.value = {}
     activeTurnIdByThreadId.value = {}
+    lastThreadDetailSyncAtById.value = {}
     queuedMessagesByThreadId.value = {}
     queueProcessingByThreadId.value = {}
   }

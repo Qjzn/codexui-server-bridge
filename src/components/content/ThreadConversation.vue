@@ -1,15 +1,21 @@
 <template>
   <section class="conversation-root">
-    <p v-if="isLoading" class="conversation-loading">Loading messages...</p>
+    <p v-if="showBlockingLoading" class="conversation-loading">Loading messages...</p>
 
     <p
-      v-else-if="messages.length === 0 && pendingRequests.length === 0 && !liveOverlay"
+      v-else-if="!hasRenderableConversation"
       class="conversation-empty"
     >
       No messages in this thread yet.
     </p>
 
-    <ul v-else ref="conversationListRef" class="conversation-list" @scroll="onConversationScroll">
+    <template v-else>
+      <div v-if="showInlineLoading" class="conversation-inline-loading" aria-live="polite">
+        <span class="conversation-inline-loading-bar" />
+        <span class="conversation-inline-loading-text">Syncing latest messages...</span>
+      </div>
+
+      <ul ref="conversationListRef" class="conversation-list" @scroll="onConversationScroll">
       <li
         v-for="request in pendingRequests"
         :key="`server-request:${request.id}`"
@@ -277,7 +283,23 @@
         </div>
       </li>
       <li ref="bottomAnchorRef" class="conversation-bottom-anchor" />
-    </ul>
+      </ul>
+
+      <button
+        v-if="showJumpToLatestButton"
+        class="conversation-jump-to-latest"
+        :class="{ 'has-pending-updates': hasPendingBelowFoldUpdates }"
+        type="button"
+        :title="jumpToLatestTitle"
+        @click="jumpToLatest"
+      >
+        <IconTablerArrowUp class="conversation-jump-to-latest-icon" />
+        <span class="conversation-jump-to-latest-label">
+          {{ hasPendingBelowFoldUpdates ? 'Latest output' : 'Bottom' }}
+        </span>
+        <span v-if="hasPendingBelowFoldUpdates" class="conversation-jump-to-latest-badge" />
+      </button>
+    </template>
 
     <div v-if="modalImageUrl.length > 0" class="image-modal-backdrop" @click="closeImageModal">
       <div class="image-modal-content" @click.stop>
@@ -318,6 +340,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import type { ThreadScrollState, UiLiveOverlay, UiMessage, UiServerRequest } from '../../types/codex'
 import IconTablerX from '../icons/IconTablerX.vue'
 import IconTablerArrowBackUp from '../icons/IconTablerArrowBackUp.vue'
+import IconTablerArrowUp from '../icons/IconTablerArrowUp.vue'
 import IconTablerCopy from '../icons/IconTablerCopy.vue'
 
 const expandedCommandIds = ref<Set<string>>(new Set())
@@ -424,6 +447,7 @@ const modalImageUrl = ref('')
 const fileLinkContextMenuRef = ref<HTMLElement | null>(null)
 const toolQuestionAnswers = ref<Record<string, string>>({})
 const toolQuestionOtherAnswers = ref<Record<string, string>>({})
+const hasPendingBelowFoldUpdates = ref(false)
 const BOTTOM_THRESHOLD_PX = 16
 type InlineSegment =
   | { kind: 'text'; value: string }
@@ -445,6 +469,21 @@ const fileLinkContextMenuX = ref(0)
 const fileLinkContextMenuY = ref(0)
 const fileLinkContextBrowseUrl = ref('')
 const fileLinkContextEditUrl = ref('')
+const hasRenderableConversation = computed(() => (
+  props.messages.length > 0 ||
+  props.pendingRequests.length > 0 ||
+  props.liveOverlay !== null
+))
+const showBlockingLoading = computed(() => props.isLoading && !hasRenderableConversation.value)
+const showInlineLoading = computed(() => props.isLoading && hasRenderableConversation.value)
+const showJumpToLatestButton = computed(() => (
+  hasRenderableConversation.value &&
+  !showBlockingLoading.value &&
+  !shouldLockToBottom()
+))
+const jumpToLatestTitle = computed(() => (
+  hasPendingBelowFoldUpdates.value ? 'Jump to the latest output' : 'Back to the bottom'
+))
 
 type ParsedToolQuestion = {
   id: string
@@ -1337,6 +1376,15 @@ function emitScrollState(container: HTMLElement): void {
   })
 }
 
+function markBelowFoldUpdate(): void {
+  if (shouldLockToBottom()) return
+  hasPendingBelowFoldUpdates.value = true
+}
+
+function clearBelowFoldUpdates(): void {
+  hasPendingBelowFoldUpdates.value = false
+}
+
 function applySavedScrollState(): void {
   const container = conversationListRef.value
   if (!container) return
@@ -1361,6 +1409,7 @@ function enforceBottomState(): void {
   if (!container) return
   scrollToBottom()
   emitScrollState(container)
+  clearBelowFoldUpdates()
 }
 
 function shouldLockToBottom(): boolean {
@@ -1427,7 +1476,7 @@ async function scheduleScrollRestore(): Promise<void> {
 
 watch(
   () => props.messages,
-  async (next) => {
+  async (next, previous) => {
     if (props.isLoading) return
 
     for (const m of next) {
@@ -1440,6 +1489,10 @@ watch(
       prevCommandStatuses.value[m.id] = cur
     }
 
+    if (previous.length > 0) {
+      markBelowFoldUpdate()
+    }
+
     await scheduleScrollRestore()
   },
 )
@@ -1448,7 +1501,9 @@ watch(
   () => props.liveOverlay,
   async (overlay) => {
     if (!overlay) return
+    markBelowFoldUpdate()
     await nextTick()
+    if (!shouldLockToBottom()) return
     enforceBottomState()
     scheduleBottomLock(8)
   },
@@ -1469,6 +1524,7 @@ watch(
     modalImageUrl.value = ''
     closeFileLinkContextMenu()
     failedMarkdownImageKeys.value = new Set()
+    clearBelowFoldUpdates()
   },
   { flush: 'post' },
 )
@@ -1490,6 +1546,14 @@ function onConversationScroll(): void {
   const container = conversationListRef.value
   if (!container || props.isLoading) return
   emitScrollState(container)
+  if (isAtBottom(container)) {
+    clearBelowFoldUpdates()
+  }
+}
+
+function jumpToLatest(): void {
+  enforceBottomState()
+  scheduleBottomLock(4)
 }
 
 function openImageModal(imageUrl: string): void {
@@ -1546,7 +1610,7 @@ onBeforeUnmount(() => {
 @reference "tailwindcss";
 
 .conversation-root {
-  @apply h-full min-h-0 p-0 flex flex-col overflow-y-hidden overflow-x-visible bg-transparent border-none rounded-none;
+  @apply relative h-full min-h-0 p-0 flex flex-col overflow-y-hidden overflow-x-visible bg-transparent border-none rounded-none;
 }
 
 .conversation-loading {
@@ -1557,8 +1621,62 @@ onBeforeUnmount(() => {
   @apply m-0 px-2 sm:px-6 text-sm text-slate-500;
 }
 
+.conversation-inline-loading {
+  @apply sticky top-0 z-10 mx-2 sm:mx-6 mb-2 mt-2 flex items-center gap-3 rounded-full border border-slate-200/70 bg-white/90 px-3 py-2 text-xs text-slate-500 shadow-sm backdrop-blur;
+}
+
+.conversation-inline-loading-bar {
+  @apply block h-1.5 w-16 overflow-hidden rounded-full bg-slate-200;
+  position: relative;
+}
+
+.conversation-inline-loading-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 42%;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, rgba(37, 99, 235, 0.2) 0%, rgba(37, 99, 235, 0.95) 100%);
+  animation: conversation-loading-slide 1.1s ease-in-out infinite;
+}
+
+.conversation-inline-loading-text {
+  @apply font-medium tracking-[0.01em];
+}
+
 .conversation-list {
   @apply h-full min-h-0 list-none m-0 px-2 sm:px-6 py-0 overflow-y-auto overflow-x-visible flex flex-col gap-2 sm:gap-3;
+}
+
+.conversation-jump-to-latest {
+  @apply absolute bottom-4 right-4 z-20 inline-flex items-center gap-2 rounded-full border border-slate-300/80 bg-white/95 px-3 py-2 text-xs font-medium text-slate-700 shadow-lg shadow-slate-900/10 backdrop-blur transition hover:-translate-y-0.5 hover:border-slate-400 hover:text-slate-900;
+}
+
+.conversation-jump-to-latest.has-pending-updates {
+  @apply border-blue-300 bg-blue-50/95 text-blue-700;
+}
+
+.conversation-jump-to-latest-icon {
+  @apply h-4 w-4;
+  transform: rotate(180deg);
+}
+
+.conversation-jump-to-latest-label {
+  @apply hidden sm:inline;
+}
+
+.conversation-jump-to-latest-badge {
+  @apply h-2.5 w-2.5 rounded-full bg-blue-500 shadow-[0_0_0_4px_rgba(59,130,246,0.16)];
+}
+
+@keyframes conversation-loading-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+
+  100% {
+    transform: translateX(220%);
+  }
 }
 
 .conversation-item {

@@ -773,8 +773,12 @@ function onRefreshDesktopApp(): void {
     return
   }
 
+  const currentThreadBusy = selectedThread.value?.inProgress === true || selectedLiveOverlay.value !== null
+  const confirmMessage = currentThreadBusy
+    ? 'This will close and reopen the official Codex desktop app on this Windows machine. It may interrupt tasks that are still running in the desktop client. The 7420 web view will stay open. Continue?'
+    : 'This will close and reopen the official Codex desktop app on this Windows machine. Continue?'
   const shouldContinue = window.confirm(
-    'This will close and reopen the official Codex desktop app on this Windows machine. Continue?',
+    confirmMessage,
   )
   if (!shouldContinue) return
 
