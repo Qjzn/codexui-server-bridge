@@ -38,8 +38,8 @@
         <div class="message-row">
           <div class="message-stack">
             <article class="request-card">
-              <p class="request-title">{{ request.method }}</p>
-              <p class="request-meta">Request #{{ request.id }} · {{ formatIsoTime(request.receivedAtIso) }}</p>
+              <p class="request-title">{{ requestMethodLabel(request.method) }}</p>
+              <p class="request-meta">请求 #{{ request.id }} · {{ formatIsoTime(request.receivedAtIso) }}</p>
 
               <p v-if="readRequestReason(request)" class="request-reason">{{ readRequestReason(request) }}</p>
 
@@ -121,14 +121,14 @@
             >
               <span class="cmd-chevron" :class="{ 'cmd-chevron-open': isCommandExpanded(message) }">▶</span>
               <span class="cmd-status">{{ commandStatusLabel(message) }}</span>
-              <code class="cmd-label">{{ message.commandExecution?.command || '(command)' }}</code>
+              <code class="cmd-label">{{ message.commandExecution?.command || '（命令）' }}</code>
             </button>
             <div
               class="cmd-output-wrap"
               :class="{ 'cmd-output-visible': isCommandExpanded(message), 'cmd-output-collapsing': isCommandCollapsing(message) }"
             >
               <div class="cmd-output-inner">
-                <pre class="cmd-output">{{ message.commandExecution?.aggregatedOutput || '(no output)' }}</pre>
+                <pre class="cmd-output">{{ message.commandExecution?.aggregatedOutput || '（无输出）' }}</pre>
               </div>
             </div>
           </div>
@@ -147,7 +147,7 @@
               >
                 <li v-for="imageUrl in message.images" :key="imageUrl" class="message-image-item">
                   <button class="message-image-button" type="button" @click="openImageModal(imageUrl)">
-                    <img class="message-image-preview" :src="toRenderableImageUrl(imageUrl)" alt="Message image preview" loading="lazy" />
+                    <img class="message-image-preview" :src="toRenderableImageUrl(imageUrl)" alt="消息图片预览" loading="lazy" />
                   </button>
                 </li>
               </ul>
@@ -192,14 +192,14 @@
                       >
                         <span class="cmd-chevron" :class="{ 'cmd-chevron-open': isCommandExpanded(cmd) }">▶</span>
                         <span class="cmd-status">{{ commandStatusLabel(cmd) }}</span>
-                        <code class="cmd-label">{{ cmd.commandExecution?.command || '(command)' }}</code>
+                        <code class="cmd-label">{{ cmd.commandExecution?.command || '（命令）' }}</code>
                       </button>
                       <div
                         class="cmd-output-wrap"
                         :class="{ 'cmd-output-visible': isCommandExpanded(cmd), 'cmd-output-collapsing': isCommandCollapsing(cmd) }"
                       >
                         <div class="cmd-output-inner">
-                          <pre class="cmd-output">{{ cmd.commandExecution?.aggregatedOutput || '(no output)' }}</pre>
+                          <pre class="cmd-output">{{ cmd.commandExecution?.aggregatedOutput || '（无输出）' }}</pre>
                         </div>
                       </div>
                     </div>
@@ -286,13 +286,38 @@
         <div class="message-row">
           <div class="message-stack">
             <article class="live-overlay-inline" aria-live="polite">
-              <p class="live-overlay-label">{{ liveOverlay.activityLabel }}</p>
+              <div class="live-overlay-head">
+                <span class="live-overlay-indicator" aria-hidden="true">
+                  <span class="live-overlay-indicator-ring" />
+                  <span class="live-overlay-indicator-core" />
+                </span>
+                <div class="live-overlay-heading">
+                  <p class="live-overlay-label">{{ liveOverlayPrimaryLabel(liveOverlay) }}</p>
+                  <span class="live-overlay-dots" aria-hidden="true">
+                    <span class="live-overlay-dot" />
+                    <span class="live-overlay-dot" />
+                    <span class="live-overlay-dot" />
+                  </span>
+                </div>
+              </div>
+              <div v-if="liveOverlay.activityDetails.length > 0" class="live-overlay-detail-list">
+                <span
+                  v-for="detail in liveOverlayDetails(liveOverlay)"
+                  :key="detail"
+                  class="live-overlay-detail-chip"
+                >
+                  {{ detail }}
+                </span>
+              </div>
               <p
                 v-if="liveOverlay.reasoningText"
                 class="live-overlay-reasoning"
                 ref="liveOverlayReasoningRef"
               >
                 {{ liveOverlay.reasoningText }}
+              </p>
+              <p v-else class="live-overlay-hint">
+                {{ liveOverlayHint(liveOverlay) }}
               </p>
               <p v-if="liveOverlay.errorText" class="live-overlay-error">{{ liveOverlay.errorText }}</p>
             </article>
@@ -465,6 +490,7 @@ const fileLinkContextMenuRef = ref<HTMLElement | null>(null)
 const toolQuestionAnswers = ref<Record<string, string>>({})
 const toolQuestionOtherAnswers = ref<Record<string, string>>({})
 const hasPendingBelowFoldUpdates = ref(false)
+const autoFollowBottom = ref(props.scrollState?.isAtBottom !== false)
 const BOTTOM_THRESHOLD_PX = 16
 type InlineSegment =
   | { kind: 'text'; value: string }
@@ -1347,7 +1373,7 @@ function onRespondToolCallFailure(requestId: number): void {
       contentItems: [
         {
           type: 'inputText',
-          text: 'Tool call rejected from codex-web-local UI.',
+          text: '工具调用已被 codex-web-local 界面拒绝。',
         },
       ],
     },
@@ -1376,7 +1402,7 @@ function onRejectUnknownRequest(requestId: number): void {
     id: requestId,
     error: {
       code: -32000,
-      message: 'Rejected from codex-web-local UI.',
+      message: '请求已被 codex-web-local 界面拒绝。',
     },
   })
 }
@@ -1421,6 +1447,36 @@ function messageRoleLabel(message: UiMessage, index: number): string {
   if (message.role === 'assistant') return 'Codex'
   if (message.role === 'system') return '系统'
   return ''
+}
+
+function requestMethodLabel(method: string): string {
+  switch (method) {
+    case 'item/commandExecution/requestApproval':
+      return '命令执行需要批准'
+    case 'item/fileChange/requestApproval':
+      return '文件变更需要批准'
+    case 'item/tool/requestUserInput':
+      return '需要补充输入'
+    case 'item/tool/call':
+      return '工具调用等待处理'
+    default:
+      return method
+  }
+}
+
+function liveOverlayPrimaryLabel(overlay: UiLiveOverlay): string {
+  return overlay.activityLabel.trim() || '思考中'
+}
+
+function liveOverlayDetails(overlay: UiLiveOverlay): string[] {
+  return overlay.activityDetails.slice(-3)
+}
+
+function liveOverlayHint(overlay: UiLiveOverlay): string {
+  if (overlay.activityLabel.includes('执行命令')) {
+    return '命令仍在运行，输出会持续追加。'
+  }
+  return '正在持续处理，保持在底部即可实时看到新进展。'
 }
 
 async function onCopyMessage(message: UiMessage): Promise<void> {
@@ -1492,10 +1548,12 @@ function applySavedScrollState(): void {
 
   const savedState = props.scrollState
   if (!savedState || savedState.isAtBottom) {
+    autoFollowBottom.value = true
     enforceBottomState()
     return
   }
 
+  autoFollowBottom.value = false
   const maxScrollTop = Math.max(container.scrollHeight - container.clientHeight, 0)
   const targetScrollTop =
     typeof savedState.scrollRatio === 'number'
@@ -1508,14 +1566,14 @@ function applySavedScrollState(): void {
 function enforceBottomState(): void {
   const container = conversationListRef.value
   if (!container) return
+  autoFollowBottom.value = true
   scrollToBottom()
   emitScrollState(container)
   clearBelowFoldUpdates()
 }
 
 function shouldLockToBottom(): boolean {
-  const savedState = props.scrollState
-  return !savedState || savedState.isAtBottom === true
+  return autoFollowBottom.value
 }
 
 function runBottomLockFrame(): void {
@@ -1562,16 +1620,22 @@ function bindPendingImageHandlers(): void {
   }
 }
 
-async function scheduleScrollRestore(): Promise<void> {
+async function scheduleScrollRestore(forceBottom = shouldLockToBottom()): Promise<void> {
   await nextTick()
   if (scrollRestoreFrame) {
     cancelAnimationFrame(scrollRestoreFrame)
   }
   scrollRestoreFrame = requestAnimationFrame(() => {
     scrollRestoreFrame = 0
-    applySavedScrollState()
+    if (forceBottom) {
+      enforceBottomState()
+    } else {
+      applySavedScrollState()
+    }
     bindPendingImageHandlers()
-    scheduleBottomLock()
+    if (forceBottom) {
+      scheduleBottomLock()
+    }
   })
 }
 
@@ -1579,6 +1643,7 @@ watch(
   () => props.messages,
   async (next, previous) => {
     if (props.isLoading) return
+    const shouldFollowBottom = shouldLockToBottom()
 
     for (const m of next) {
       if (m.messageType !== 'commandExecution' || !m.commandExecution) continue
@@ -1590,11 +1655,11 @@ watch(
       prevCommandStatuses.value[m.id] = cur
     }
 
-    if (previous.length > 0) {
+    if (previous.length > 0 && !shouldFollowBottom) {
       markBelowFoldUpdate()
     }
 
-    await scheduleScrollRestore()
+    await scheduleScrollRestore(shouldFollowBottom)
   },
 )
 
@@ -1602,9 +1667,12 @@ watch(
   () => props.liveOverlay,
   async (overlay) => {
     if (!overlay) return
-    markBelowFoldUpdate()
+    const shouldFollowBottom = shouldLockToBottom()
+    if (!shouldFollowBottom) {
+      markBelowFoldUpdate()
+    }
     await nextTick()
-    if (!shouldLockToBottom()) return
+    if (!shouldFollowBottom) return
     enforceBottomState()
     scheduleBottomLock(8)
   },
@@ -1626,8 +1694,16 @@ watch(
     closeFileLinkContextMenu()
     failedMarkdownImageKeys.value = new Set()
     clearBelowFoldUpdates()
+    autoFollowBottom.value = props.scrollState?.isAtBottom !== false
   },
   { flush: 'post' },
+)
+
+watch(
+  () => props.scrollState?.isAtBottom,
+  (isAtBottomState) => {
+    autoFollowBottom.value = isAtBottomState !== false
+  },
 )
 
 watch(isFileLinkContextMenuVisible, (isVisible) => {
@@ -1646,6 +1722,7 @@ watch(isFileLinkContextMenuVisible, (isVisible) => {
 function onConversationScroll(): void {
   const container = conversationListRef.value
   if (!container || props.isLoading) return
+  autoFollowBottom.value = isAtBottom(container)
   emitScrollState(container)
   if (isAtBottom(container)) {
     clearBelowFoldUpdates()
@@ -1653,6 +1730,7 @@ function onConversationScroll(): void {
 }
 
 function jumpToLatest(): void {
+  autoFollowBottom.value = true
   enforceBottomState()
   scheduleBottomLock(4)
 }
@@ -1924,8 +2002,59 @@ onBeforeUnmount(() => {
   @apply w-full max-w-180 rounded-[24px] border border-[#cfe6e0] bg-[#f4fbf9] px-3.5 py-2.5 flex flex-col gap-1.5 shadow-[0_10px_26px_-22px_rgba(15,118,110,0.45)];
 }
 
+.live-overlay-head {
+  @apply flex items-center gap-2.5;
+}
+
+.live-overlay-indicator {
+  @apply relative flex h-8 w-8 items-center justify-center rounded-full bg-[#dcf1ec] shrink-0;
+}
+
+.live-overlay-indicator-ring {
+  @apply absolute inset-0 rounded-full border border-[#72c8ba];
+  animation: live-overlay-pulse-ring 1.7s ease-out infinite;
+}
+
+.live-overlay-indicator-core {
+  @apply block h-2.5 w-2.5 rounded-full bg-[#0f766e];
+  animation: live-overlay-pulse-core 1.2s ease-in-out infinite;
+}
+
+.live-overlay-heading {
+  @apply min-w-0 flex flex-col gap-0.5;
+}
+
 .live-overlay-label {
-  @apply m-0 text-[11px] uppercase tracking-[0.16em] font-semibold text-[#0f766e];
+  @apply m-0 text-[11px] uppercase tracking-[0.14em] font-semibold text-[#0f766e];
+}
+
+.live-overlay-dots {
+  @apply inline-flex items-center gap-1;
+}
+
+.live-overlay-dot {
+  @apply h-1.5 w-1.5 rounded-full bg-[#0f766e]/50;
+  animation: live-overlay-dot-bounce 1.1s ease-in-out infinite;
+}
+
+.live-overlay-dot:nth-child(2) {
+  animation-delay: 120ms;
+}
+
+.live-overlay-dot:nth-child(3) {
+  animation-delay: 240ms;
+}
+
+.live-overlay-detail-list {
+  @apply flex flex-wrap gap-1.5;
+}
+
+.live-overlay-detail-chip {
+  @apply inline-flex items-center rounded-full border border-[#d6ebe6] bg-white/80 px-2 py-0.5 text-[11px] text-[#476760];
+}
+
+.live-overlay-hint {
+  @apply m-0 text-sm leading-5 text-[#5b756f];
 }
 
 .live-overlay-reasoning {
@@ -1944,6 +2073,40 @@ onBeforeUnmount(() => {
 
 .live-overlay-error {
   @apply m-0 text-sm leading-5 text-[#c2410c] whitespace-pre-wrap;
+}
+
+@keyframes live-overlay-pulse-ring {
+  0% {
+    transform: scale(0.86);
+    opacity: 0.75;
+  }
+
+  100% {
+    transform: scale(1.24);
+    opacity: 0;
+  }
+}
+
+@keyframes live-overlay-pulse-core {
+  0%, 100% {
+    transform: scale(0.94);
+  }
+
+  50% {
+    transform: scale(1.08);
+  }
+}
+
+@keyframes live-overlay-dot-bounce {
+  0%, 80%, 100% {
+    transform: translateY(0);
+    opacity: 0.38;
+  }
+
+  40% {
+    transform: translateY(-2px);
+    opacity: 1;
+  }
 }
 
 .message-body {

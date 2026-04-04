@@ -6,7 +6,7 @@
         v-model="query"
         class="skill-picker-search"
         type="text"
-        placeholder="Search skills..."
+        placeholder="搜索技能..."
         @keydown.escape.prevent="$emit('close')"
         @keydown.enter.prevent="selectHighlighted"
         @keydown.arrow-down.prevent="moveHighlight(1)"
@@ -27,7 +27,7 @@
         </button>
       </li>
     </ul>
-    <div v-else class="skill-picker-empty">No skills found</div>
+    <div v-else class="skill-picker-empty">没有找到技能</div>
   </div>
 </template>
 

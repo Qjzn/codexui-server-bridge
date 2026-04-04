@@ -60,11 +60,11 @@ function isAuthorizedByRequestLike(
 }
 
 const LOGIN_PAGE_HTML = `<!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Codex Web Local &mdash; Login</title>
+<title>Codex Web Local &mdash; 登录</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0a0a0a;color:#e5e5e5;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:1rem}
@@ -82,10 +82,10 @@ button:hover{background:#2563eb}
 <div class="card">
 <h1>Codex Web Local</h1>
 <form id="f">
-<label for="pw">Password</label>
+<label for="pw">密码</label>
 <input id="pw" name="password" type="password" autocomplete="current-password" autofocus required>
-<button type="submit">Sign in</button>
-<p class="error" id="err">Incorrect password</p>
+<button type="submit">登录</button>
+<p class="error" id="err">密码错误</p>
 </form>
 </div>
 <script>
@@ -130,7 +130,7 @@ export function createAuthSession(password: string): AuthSession {
           const provided = typeof parsed.password === 'string' ? parsed.password : ''
 
           if (!constantTimeCompare(provided, password)) {
-            res.status(401).json({ error: 'Invalid password' })
+            res.status(401).json({ error: '密码错误' })
             return
           }
 
@@ -140,7 +140,7 @@ export function createAuthSession(password: string): AuthSession {
           res.setHeader('Set-Cookie', `${TOKEN_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Strict`)
           res.json({ ok: true })
         } catch {
-          res.status(400).json({ error: 'Invalid request body' })
+          res.status(400).json({ error: '请求体格式无效' })
         }
       })
       return

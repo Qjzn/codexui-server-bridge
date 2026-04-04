@@ -1,13 +1,13 @@
 <template>
   <div class="skills-hub">
     <div class="skills-hub-header">
-      <h2 class="skills-hub-title">Skills Hub</h2>
-      <p class="skills-hub-subtitle">Browse and discover skills from the OpenClaw community</p>
+      <h2 class="skills-hub-title">技能中心</h2>
+      <p class="skills-hub-subtitle">浏览并发现 OpenClaw 社区提供的技能</p>
     </div>
 
     <div class="skills-sync-panel">
       <div class="skills-sync-header">
-        <strong>Skills Sync (GitHub)</strong>
+        <strong>技能同步（GitHub）</strong>
         <a
           v-if="syncStatus.configured && githubRepoUrl"
           class="skills-sync-badge skills-sync-badge-link"
@@ -15,36 +15,36 @@
           target="_blank"
           rel="noopener noreferrer"
         >
-          Connected: {{ syncStatus.repoOwner }}/{{ syncStatus.repoName }}
+          已连接：{{ syncStatus.repoOwner }}/{{ syncStatus.repoName }}
         </a>
-        <span v-else-if="syncStatus.loggedIn" class="skills-sync-badge">Logged in as {{ syncStatus.githubUsername }}</span>
-        <span v-else class="skills-sync-badge">Not connected</span>
+        <span v-else-if="syncStatus.loggedIn" class="skills-sync-badge">已登录：{{ syncStatus.githubUsername }}</span>
+        <span v-else class="skills-sync-badge">未连接</span>
       </div>
       <div class="skills-sync-meta">
-        <span>Startup: {{ syncStatus.startup.mode }}</span>
-        <span>Branch: {{ syncStatus.startup.branch }}</span>
-        <span>Action: {{ syncStatus.startup.lastAction }}</span>
+        <span>启动：{{ syncStatus.startup.mode }}</span>
+        <span>分支：{{ syncStatus.startup.branch }}</span>
+        <span>动作：{{ syncStatus.startup.lastAction }}</span>
       </div>
       <div v-if="syncStatus.startup.lastError" class="skills-sync-error">
         {{ syncStatus.startup.lastError }}
       </div>
       <div v-if="syncActionStatus" class="skills-sync-meta">
-        <span>Manual sync: {{ syncActionStatus }}</span>
+        <span>手动同步：{{ syncActionStatus }}</span>
       </div>
       <div v-if="syncActionError" class="skills-sync-error">
         {{ syncActionError }}
       </div>
       <div v-if="deviceLogin" class="skills-sync-device">
-        <span>Open <a :href="deviceLogin.verification_uri" target="_blank" rel="noreferrer">GitHub device login</a> and enter code:</span>
+        <span>打开 <a :href="deviceLogin.verification_uri" target="_blank" rel="noreferrer">GitHub 设备登录页</a> 并输入代码：</span>
         <code>{{ deviceLogin.user_code }}</code>
       </div>
       <div class="skills-sync-actions">
-        <button v-if="!syncStatus.loggedIn" class="skills-hub-sort" type="button" @click="startGithubFirebaseLogin">Login with GitHub</button>
-        <button v-if="!syncStatus.loggedIn" class="skills-hub-sort" type="button" @click="startGithubLogin">Device Login</button>
-        <button v-if="syncStatus.loggedIn" class="skills-hub-sort" type="button" @click="logoutGithub" :disabled="isSyncActionInFlight">Logout GitHub</button>
-        <button class="skills-hub-sort" type="button" @click="startupSkillsSync" :disabled="isSyncActionInFlight">{{ isStartupSyncInFlight ? 'Syncing...' : 'Startup Sync' }}</button>
-        <button class="skills-hub-sort" type="button" @click="pullSkillsSync" :disabled="isSyncActionInFlight">{{ isPullInFlight ? 'Pulling...' : 'Pull' }}</button>
-        <button v-if="syncStatus.loggedIn" class="skills-hub-sort" type="button" @click="pushSkillsSync" :disabled="!syncStatus.configured || isSyncActionInFlight">{{ isPushInFlight ? 'Pushing...' : 'Push' }}</button>
+        <button v-if="!syncStatus.loggedIn" class="skills-hub-sort" type="button" @click="startGithubFirebaseLogin">GitHub 登录</button>
+        <button v-if="!syncStatus.loggedIn" class="skills-hub-sort" type="button" @click="startGithubLogin">设备登录</button>
+        <button v-if="syncStatus.loggedIn" class="skills-hub-sort" type="button" @click="logoutGithub" :disabled="isSyncActionInFlight">退出 GitHub</button>
+        <button class="skills-hub-sort" type="button" @click="startupSkillsSync" :disabled="isSyncActionInFlight">{{ isStartupSyncInFlight ? '同步中...' : '启动同步' }}</button>
+        <button class="skills-hub-sort" type="button" @click="pullSkillsSync" :disabled="isSyncActionInFlight">{{ isPullInFlight ? '拉取中...' : '拉取' }}</button>
+        <button v-if="syncStatus.loggedIn" class="skills-hub-sort" type="button" @click="pushSkillsSync" :disabled="!syncStatus.configured || isSyncActionInFlight">{{ isPushInFlight ? '推送中...' : '推送' }}</button>
       </div>
     </div>
 
@@ -52,7 +52,7 @@
 
     <div v-if="filteredInstalled.length > 0" class="skills-hub-section">
       <button class="skills-hub-section-toggle" type="button" @click="isInstalledOpen = !isInstalledOpen">
-        <span class="skills-hub-section-title">Installed ({{ filteredInstalled.length }})</span>
+        <span class="skills-hub-section-title">已安装（{{ filteredInstalled.length }}）</span>
         <IconTablerChevronRight class="skills-hub-section-chevron" :class="{ 'is-open': isInstalledOpen }" />
       </button>
       <div v-if="isInstalledOpen" class="skills-hub-grid">
@@ -73,11 +73,11 @@
           v-model="query"
           class="skills-hub-search"
           type="text"
-          placeholder="Search skills... (e.g. flight, docker, react)"
+          placeholder="搜索技能...（例如：docker、react、deploy）"
           @keyup.enter.prevent="onSearchSubmit"
         />
-        <button class="skills-hub-search-btn" type="button" @click="onSearchSubmit">Search</button>
-        <span v-if="totalCount > 0" class="skills-hub-count">{{ totalCount }} skills</span>
+        <button class="skills-hub-search-btn" type="button" @click="onSearchSubmit">搜索</button>
+        <span v-if="totalCount > 0" class="skills-hub-count">{{ totalCount }} 个技能</span>
       </div>
       <button class="skills-hub-sort" type="button" @click="toggleSort">
         {{ sortLabel }}
@@ -85,7 +85,7 @@
     </div>
 
     <div class="skills-hub-section">
-      <div v-if="isLoading" class="skills-hub-loading">Loading skills...</div>
+      <div v-if="isLoading" class="skills-hub-loading">正在加载技能...</div>
       <div v-else-if="error" class="skills-hub-error">{{ error }}</div>
       <template v-else>
         <div v-if="browseSkills.length > 0" class="skills-hub-grid">
@@ -96,7 +96,7 @@
             @select="(skill) => openDetail(skill as HubSkill)"
           />
         </div>
-        <div v-else-if="activeQuery.trim()" class="skills-hub-empty">No skills found for "{{ activeQuery }}"</div>
+        <div v-else-if="activeQuery.trim()" class="skills-hub-empty">没有找到与“{{ activeQuery }}”相关的技能</div>
       </template>
     </div>
 
@@ -147,7 +147,7 @@ const emit = defineEmits<{
   'skills-changed': []
 }>()
 
-const sortLabel = computed(() => sortMode.value === 'date' ? 'Newest' : 'A-Z')
+const sortLabel = computed(() => sortMode.value === 'date' ? '最新发布' : '按名称')
 const toastClass = computed(() => toast.value?.type === 'error' ? 'skills-hub-toast-error' : 'skills-hub-toast-success')
 const currentDetailSkillKey = computed(() => `${detailSkill.value.owner}/${detailSkill.value.name}`)
 const isDetailInstalling = computed(() =>
@@ -259,7 +259,7 @@ async function fetchSkills(q: string): Promise<void> {
     applySkillsPayload(data)
     writeCache(key, data)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load skills'
+    error.value = e instanceof Error ? e.message : '加载技能失败'
   } finally {
     isLoading.value = false
   }
@@ -284,17 +284,17 @@ async function handleInstall(skill: HubSkill): Promise<void> {
       body: JSON.stringify({ owner: skill.owner, name: skill.name }),
     })
     const data = (await resp.json()) as { ok?: boolean; error?: string; path?: string }
-    if (!data.ok) throw new Error(data.error || 'Install failed')
+    if (!data.ok) throw new Error(data.error || '安装失败')
     const installed = { ...skill, installed: true, path: data.path, enabled: true }
     installedSkills.value = [...installedSkills.value, installed]
     browseSkills.value = browseSkills.value.filter((s) => s.name !== skill.name)
     detailSkill.value = installed
-    showToast(`${skill.displayName || skill.name} skill installed`)
+    showToast(`已安装 ${skill.displayName || skill.name}`)
     isDetailOpen.value = false
     clearCache()
     emit('skills-changed')
   } catch (e) {
-    showToast(e instanceof Error ? e.message : 'Failed to install skill', 'error')
+    showToast(e instanceof Error ? e.message : '安装技能失败', 'error')
   } finally {
     isInstallActionInFlight.value = false
   }
@@ -310,17 +310,17 @@ async function handleUninstall(skill: HubSkill): Promise<void> {
       body: JSON.stringify({ name: skill.name, path: skill.path }),
     })
     const data = (await resp.json()) as { ok?: boolean; error?: string }
-    if (!data.ok) throw new Error(data.error || 'Uninstall failed')
+    if (!data.ok) throw new Error(data.error || '卸载失败')
     installedSkills.value = installedSkills.value.filter((s) => s.name !== skill.name)
     if (skill.owner !== 'local') {
       browseSkills.value = [...browseSkills.value, { ...skill, installed: false, path: undefined, enabled: undefined }]
     }
-    showToast(`${skill.displayName || skill.name} skill uninstalled`)
+    showToast(`已卸载 ${skill.displayName || skill.name}`)
     isDetailOpen.value = false
     clearCache()
     emit('skills-changed')
   } catch (e) {
-    showToast(e instanceof Error ? e.message : 'Failed to uninstall skill', 'error')
+    showToast(e instanceof Error ? e.message : '卸载技能失败', 'error')
   } finally {
     isUninstallActionInFlight.value = false
   }
@@ -333,12 +333,12 @@ async function handleToggleEnabled(skill: HubSkill, enabled: boolean): Promise<v
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ method: 'skills/config/write', params: { path: skill.path, enabled } }),
     })
-    if (!resp.ok) throw new Error('Failed to update skill')
+    if (!resp.ok) throw new Error('更新技能状态失败')
     await fetch('/codex-api/skills-sync/push', { method: 'POST' })
-    showToast(`${skill.displayName || skill.name} skill ${enabled ? 'enabled' : 'disabled'}`)
+    showToast(`${skill.displayName || skill.name} 已${enabled ? '启用' : '禁用'}`)
     await fetchSkills(activeQuery.value)
   } catch (e) {
-    showToast(e instanceof Error ? e.message : 'Failed to update skill', 'error')
+    showToast(e instanceof Error ? e.message : '更新技能状态失败', 'error')
   }
 }
 

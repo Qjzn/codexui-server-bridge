@@ -18,8 +18,8 @@
       <div class="skill-card-info">
         <div class="skill-card-header">
           <span class="skill-card-name">{{ skill.displayName || skill.name }}</span>
-          <span v-if="skill.installed && skill.enabled === false" class="skill-card-badge-disabled">Disabled</span>
-          <span v-else-if="skill.installed" class="skill-card-badge">Installed</span>
+          <span v-if="skill.installed && skill.enabled === false" class="skill-card-badge-disabled">已禁用</span>
+          <span v-else-if="skill.installed" class="skill-card-badge">已安装</span>
         </div>
         <span class="skill-card-owner">{{ skill.owner }}</span>
       </div>
@@ -27,7 +27,7 @@
         v-if="skill.installed && skillDirPath"
         class="skill-card-browse"
         type="button"
-        title="Browse files"
+        title="浏览文件"
         @click.stop="onBrowse"
       >
         <IconTablerFolder class="skill-card-browse-icon" />
@@ -77,10 +77,10 @@ const publishedLabel = computed(() => {
   const d = new Date(ts)
   const now = Date.now()
   const diff = now - ts
-  if (diff < 3600_000) return `${Math.floor(diff / 60_000)}m ago`
-  if (diff < 86400_000) return `${Math.floor(diff / 3600_000)}h ago`
-  if (diff < 2592000_000) return `${Math.floor(diff / 86400_000)}d ago`
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  if (diff < 3600_000) return `${Math.floor(diff / 60_000)} 分钟前`
+  if (diff < 86400_000) return `${Math.floor(diff / 3600_000)} 小时前`
+  if (diff < 2592000_000) return `${Math.floor(diff / 86400_000)} 天前`
+  return d.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
 })
 
 function onAvatarError(e: Event): void {

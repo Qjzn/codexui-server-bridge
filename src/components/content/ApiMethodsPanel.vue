@@ -1,11 +1,11 @@
 <template>
   <aside class="api-panel-root">
     <header class="api-panel-header">
-      <h2 class="api-panel-title">AppServer API</h2>
-      <p class="api-panel-count">{{ methods.length }} methods</p>
+      <h2 class="api-panel-title">AppServer 接口</h2>
+      <p class="api-panel-count">{{ methods.length }} 个方法</p>
     </header>
 
-    <p v-if="isLoading" class="api-panel-loading">Loading method catalog...</p>
+    <p v-if="isLoading" class="api-panel-loading">正在加载方法目录...</p>
 
     <ul v-else class="api-method-list">
       <li v-for="method in methods" :key="method" class="api-method-item">

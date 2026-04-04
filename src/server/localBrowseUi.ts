@@ -161,7 +161,7 @@ export async function createDirectoryListingHtml(localPath: string): Promise<str
     .map((item) => {
       const suffix = item.isDirectory ? '/' : ''
       const editAction = item.editable
-        ? ` <a class="icon-btn" aria-label="Edit ${escapeHtml(item.name)}" href="${escapeHtml(toEditHref(item.path))}" title="Edit">✏️</a>`
+        ? ` <a class="icon-btn" aria-label="编辑 ${escapeHtml(item.name)}" href="${escapeHtml(toEditHref(item.path))}" title="编辑">✏️</a>`
         : ''
       return `<li class="file-row"><a class="file-link" href="${escapeHtml(toBrowseHref(item.path))}">${escapeHtml(item.name)}${suffix}</a><span class="row-actions">${editAction}</span></li>`
     })
@@ -172,11 +172,11 @@ export async function createDirectoryListingHtml(localPath: string): Promise<str
     : ''
 
   return `<!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Index of ${escapeHtml(localPath)}</title>
+  <title>${escapeHtml(localPath)} 的目录</title>
   <style>
     body { font-family: ui-monospace, Menlo, Monaco, monospace; margin: 16px; background: #0b1020; color: #dbe6ff; }
     a { color: #8cc2ff; text-decoration: none; }
@@ -215,10 +215,10 @@ export async function createDirectoryListingHtml(localPath: string): Promise<str
   </style>
 </head>
 <body>
-  <h1>Index of ${escapeHtml(localPath)}</h1>
+  <h1>${escapeHtml(localPath)} 的目录</h1>
   <div class="header-actions">
     ${parentLink ? `<a class="header-parent-link" href="${escapeHtml(toBrowseHref(parentPath))}">..</a>` : ''}
-    <button class="header-open-btn open-folder-btn" type="button" aria-label="Open current folder in Codex" title="Open folder in Codex" data-path="${escapeHtml(localPath)}">Open folder in Codex</button>
+    <button class="header-open-btn open-folder-btn" type="button" aria-label="在 Codex 中打开当前文件夹" title="在 Codex 中打开当前文件夹" data-path="${escapeHtml(localPath)}">在 Codex 中打开</button>
   </div>
   <p id="status" class="status"></p>
   <ul>${rows}</ul>
@@ -233,7 +233,7 @@ export async function createDirectoryListingHtml(localPath: string): Promise<str
       const path = button.getAttribute('data-path') || '';
       if (!path) return;
       button.disabled = true;
-      status.textContent = 'Opening folder in Codex...';
+      status.textContent = '正在用 Codex 打开文件夹...';
       try {
         const response = await fetch('/codex-api/project-root', {
           method: 'POST',
@@ -245,13 +245,13 @@ export async function createDirectoryListingHtml(localPath: string): Promise<str
           }),
         });
         if (!response.ok) {
-          status.textContent = 'Failed to open folder.';
+          status.textContent = '打开文件夹失败。';
           button.disabled = false;
           return;
         }
         window.location.assign('/#/');
       } catch {
-        status.textContent = 'Failed to open folder.';
+        status.textContent = '打开文件夹失败。';
         button.disabled = false;
       }
     });
@@ -266,11 +266,11 @@ export async function createTextEditorHtml(localPath: string): Promise<string> {
   const language = languageForPath(localPath)
   const safeContentLiteral = escapeForInlineScriptString(content)
   return `<!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Edit ${escapeHtml(localPath)}</title>
+  <title>编辑 ${escapeHtml(localPath)}</title>
   <style>
     html, body { width: 100%; height: 100%; margin: 0; }
     body { font-family: ui-monospace, Menlo, Monaco, monospace; background: #0b1020; color: #dbe6ff; display: flex; flex-direction: column; overflow: hidden; }
@@ -290,8 +290,8 @@ export async function createTextEditorHtml(localPath: string): Promise<string> {
 <body>
   <div class="toolbar">
     <div class="row">
-      <a href="${escapeHtml(toBrowseHref(parentPath))}">Back</a>
-      <button id="saveBtn" type="button">Save</button>
+      <a href="${escapeHtml(toBrowseHref(parentPath))}">返回</a>
+      <button id="saveBtn" type="button">保存</button>
       <span id="status"></span>
     </div>
     <div class="meta">${escapeHtml(localPath)} · ${escapeHtml(language)}</div>
@@ -316,13 +316,13 @@ export async function createTextEditorHtml(localPath: string): Promise<string> {
     editor.resize();
 
     saveBtn.addEventListener('click', async () => {
-      status.textContent = 'Saving...';
+      status.textContent = '正在保存...';
       const response = await fetch(location.pathname, {
         method: 'PUT',
         headers: { 'Content-Type': 'text/plain; charset=utf-8' },
         body: editor.getValue(),
       });
-      status.textContent = response.ok ? 'Saved' : 'Save failed';
+      status.textContent = response.ok ? '已保存' : '保存失败';
     });
   </script>
 </body>

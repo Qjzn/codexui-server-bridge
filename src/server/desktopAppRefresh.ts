@@ -92,7 +92,7 @@ try {
       appInstalled = $false
       appRunning = $false
       appUserModelId = ""
-      reason = "Official Codex desktop app is not installed."
+      reason = "官方 Codex 桌面端未安装。"
     } | ConvertTo-Json -Compress
     exit 0
   }
@@ -141,7 +141,7 @@ $ErrorActionPreference = "Stop"
 function Get-CodexPackageInfo {
   $package = Get-AppxPackage OpenAI.Codex | Select-Object -First 1
   if (-not $package) {
-    throw "Official Codex app package was not found."
+    throw "未找到官方 Codex 应用包。"
   }
 
   [pscustomobject]@{
@@ -205,7 +205,7 @@ Start-Process explorer.exe "shell:AppsFolder\\$($packageInfo.AppUserModelId)" | 
 
 function normalizeDesktopStatus(payload: unknown): DesktopAppRefreshStatus {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    return getUnavailableStatus('Desktop app status returned an invalid payload.')
+    return getUnavailableStatus('桌面端状态返回了无效数据。')
   }
 
   const record = payload as Record<string, unknown>
@@ -221,32 +221,32 @@ function normalizeDesktopStatus(payload: unknown): DesktopAppRefreshStatus {
 
 export async function getDesktopAppRefreshStatus(): Promise<DesktopAppRefreshStatus> {
   if (process.platform !== WINDOWS_PLATFORM) {
-    return getUnavailableStatus('Desktop refresh is only available on Windows.')
+    return getUnavailableStatus('桌面端刷新仅支持 Windows。')
   }
 
   const result = await runPowerShell(buildDesktopStatusScript())
   if (result.exitCode !== 0) {
     const details = [result.stderr.trim(), result.stdout.trim()].filter(Boolean).join('\n')
-    return getUnavailableStatus(details || 'Failed to query the official Codex desktop app.')
+    return getUnavailableStatus(details || '查询官方 Codex 桌面端状态失败。')
   }
 
   try {
     return normalizeDesktopStatus(JSON.parse(result.stdout.trim()))
   } catch {
     const details = [result.stderr.trim(), result.stdout.trim()].filter(Boolean).join('\n')
-    return getUnavailableStatus(details || 'Desktop app status returned invalid JSON.')
+    return getUnavailableStatus(details || '桌面端状态返回了无效 JSON。')
   }
 }
 
 export async function requestDesktopAppRefresh(): Promise<DesktopAppRefreshRequestResult> {
   const status = await getDesktopAppRefreshStatus()
   if (!status.available) {
-    throw new Error(status.reason || 'Official Codex desktop app refresh is unavailable on this machine.')
+    throw new Error(status.reason || '当前机器无法刷新官方 Codex 桌面端。')
   }
 
   launchDetachedPowerShell(buildDesktopRefreshScript(DEFAULT_REFRESH_DELAY_MS))
   return {
     requested: true,
-    message: 'Official Codex desktop app refresh requested. The app will close and reopen shortly.',
+    message: '已请求刷新官方 Codex 桌面端，应用将很快关闭并重新打开。',
   }
 }

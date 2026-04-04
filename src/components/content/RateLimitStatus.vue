@@ -45,7 +45,7 @@ function getSnapshotKey(snapshot: UiRateLimitSnapshot): string {
 }
 
 function getSnapshotTitle(snapshot: UiRateLimitSnapshot): string {
-  return snapshot.limitName?.trim() || snapshot.limitId?.trim() || 'Rate limits'
+  return snapshot.limitName?.trim() || snapshot.limitId?.trim() || '额度限制'
 }
 
 function formatPlanType(value: string): string {
@@ -57,7 +57,7 @@ function formatPlanType(value: string): string {
 }
 
 function formatWindowDuration(windowDurationMins: number | null): string {
-  if (!windowDurationMins || windowDurationMins <= 0) return 'Window'
+  if (!windowDurationMins || windowDurationMins <= 0) return '窗口'
   if (windowDurationMins % 1440 === 0) return `${windowDurationMins / 1440}d`
   if (windowDurationMins % 60 === 0) return `${windowDurationMins / 60}h`
   if (windowDurationMins < 60) return `${windowDurationMins}m`
@@ -66,7 +66,7 @@ function formatWindowDuration(windowDurationMins: number | null): string {
 
 function formatRemainingPercent(value: number): string {
   const remaining = Math.max(0, Math.min(100, 100 - value))
-  return `${Math.round(remaining)}% left`
+  return `剩余 ${Math.round(remaining)}%`
 }
 
 function formatUsedPercent(value: number): string {
@@ -102,20 +102,20 @@ function formatRelativeResetText(window: UiRateLimitWindow | null): string {
   if (!window?.resetsAt) return ''
 
   const diffMs = window.resetsAt * 1000 - Date.now()
-  if (diffMs <= 0) return 'Resetting now'
+  if (diffMs <= 0) return '正在重置'
 
   const diffMinutes = Math.round(diffMs / 60000)
   if (diffMinutes < 60) {
-    return `Resets in ${diffMinutes}m`
+    return `${diffMinutes} 分钟后重置`
   }
 
   const diffHours = Math.round(diffMinutes / 60)
   if (diffHours < 24) {
-    return `Resets in ${diffHours}h`
+    return `${diffHours} 小时后重置`
   }
 
   const diffDays = Math.round(diffHours / 24)
-  return `Resets in ${diffDays}d`
+  return `${diffDays} 天后重置`
 }
 
 function getResetWindows(snapshot: UiRateLimitSnapshot): UiRateLimitWindow[] {
@@ -154,9 +154,9 @@ function getWeeklyResetText(snapshot: UiRateLimitSnapshot): string {
 function getCreditsText(snapshot: UiRateLimitSnapshot): string {
   const credits = snapshot.credits
   if (!credits) return ''
-  if (credits.unlimited) return 'Unlimited credits'
-  if (credits.balance) return `Credits ${credits.balance}`
-  if (credits.hasCredits) return 'Credits available'
+  if (credits.unlimited) return '额度不限'
+  if (credits.balance) return `额度 ${credits.balance}`
+  if (credits.hasCredits) return '有可用额度'
   return ''
 }
 
@@ -174,7 +174,7 @@ function buildTooltip(snapshot: UiRateLimitSnapshot): string {
     lines.push(metric.label)
   }
   for (const window of getResetWindows(snapshot)) {
-    lines.push(`${formatWindowDuration(window.windowDurationMins)} used ${formatUsedPercent(window.usedPercent)}`)
+    lines.push(`${formatWindowDuration(window.windowDurationMins)} 已用 ${formatUsedPercent(window.usedPercent)}`)
   }
   for (const footer of getFooterParts(snapshot)) {
     lines.push(footer)

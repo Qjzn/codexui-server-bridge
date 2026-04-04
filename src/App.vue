@@ -68,7 +68,7 @@
             @export-thread="onExportThread" />
         </div>
 
-        <div v-if="!isSidebarCollapsed" class="sidebar-settings-area">
+        <div v-if="!isSidebarCollapsed" ref="sidebarSettingsAreaRef" class="sidebar-settings-area">
           <Transition name="settings-panel">
             <div v-if="isSettingsOpen" class="sidebar-settings-panel">
               <button class="sidebar-settings-row" type="button" :title="SETTINGS_HELP.sendWithEnter" @click="toggleSendWithEnter">
@@ -562,6 +562,7 @@ const router = useRouter()
 const { isMobile } = useMobile()
 const homeThreadComposerRef = ref<ThreadComposerExposed | null>(null)
 const threadComposerRef = ref<ThreadComposerExposed | null>(null)
+const sidebarSettingsAreaRef = ref<HTMLElement | null>(null)
 const trendingProjects = ref<GithubTrendingProject[]>([])
 const isTrendingProjectsLoading = ref(false)
 const githubTipsScope = ref<GithubTipsScope>('trending-daily')
@@ -815,6 +816,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', onWindowKeyDown)
+  window.removeEventListener('pointerdown', onWindowPointerDownForSettings, { capture: true })
   darkModeMediaQuery?.removeEventListener('change', applyDarkMode)
   if (threadSearchTimer) {
     clearTimeout(threadSearchTimer)
@@ -845,6 +847,14 @@ watch(sidebarSearchQuery, (value) => {
         serverMatchedThreadIds.value = null
       })
   }, 220)
+})
+
+watch(isSettingsOpen, (open) => {
+  if (open) {
+    window.addEventListener('pointerdown', onWindowPointerDownForSettings, { capture: true })
+    return
+  }
+  window.removeEventListener('pointerdown', onWindowPointerDownForSettings, { capture: true })
 })
 
 function onSkillsChanged(): void {
@@ -1059,11 +1069,28 @@ function onWindowKeyDown(event: KeyboardEvent): void {
     closeDesktopRefreshConfirm()
     return
   }
+  if (event.key === 'Escape' && isSettingsOpen.value) {
+    event.preventDefault()
+    isSettingsOpen.value = false
+    return
+  }
   if (!event.ctrlKey && !event.metaKey) return
   if (event.shiftKey || event.altKey) return
   if (event.key.toLowerCase() !== 'b') return
   event.preventDefault()
   setSidebarCollapsed(!isSidebarCollapsed.value)
+}
+
+function onWindowPointerDownForSettings(event: PointerEvent): void {
+  if (!isSettingsOpen.value) return
+  const settingsArea = sidebarSettingsAreaRef.value
+  if (!settingsArea) return
+
+  const target = event.target
+  if (!(target instanceof Node)) return
+  if (settingsArea.contains(target)) return
+
+  isSettingsOpen.value = false
 }
 
 function onSubmitThreadMessage(payload: { text: string; imageUrls: string[]; fileAttachments: Array<{ label: string; path: string; fsPath: string }>; skills: Array<{ name: string; path: string }>; mode: 'steer' | 'queue'; rollbackLatestUserTurn?: boolean }): void {
@@ -1109,16 +1136,16 @@ function onGithubTipsScopeChange(nextValue: string): void {
 
 function onConnectTelegramBot(): void {
   if (typeof window === 'undefined') return
-  const botToken = window.prompt('Telegram bot token')
+  const botToken = window.prompt('请输入 Telegram 机器人 Token')
   if (!botToken || !botToken.trim()) return
 
   void configureTelegramBot(botToken.trim())
     .then(() => {
-      window.alert('Telegram bot configured. Open the bot DM and send /start.')
+      window.alert('Telegram 机器人已配置完成。打开机器人私聊并发送 /start。')
       void refreshTelegramStatus()
     })
     .catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : 'Failed to connect Telegram bot'
+      const message = error instanceof Error ? error.message : '连接 Telegram 机器人失败'
       window.alert(message)
       void refreshTelegramStatus()
     })
@@ -1128,7 +1155,7 @@ function onSelectTrendingProjectTip(project: GithubTrendingProject): void {
   const composer = homeThreadComposerRef.value
   if (!composer) return
   composer.hydrateDraft({
-    text: `Clone this GitHub project and run it: ${project.url}\nThen explain what this project does in very simple words a 5th grader can understand.`,
+    text: `请克隆并运行这个 GitHub 项目：${project.url}\n然后用非常简单、五年级学生也能听懂的话解释这个项目是做什么的。`,
     imageUrls: [],
     fileAttachments: [],
     skills: [],
@@ -1142,7 +1169,7 @@ function onEditQueuedMessage(messageId: string): void {
   if (!message || !composer) return
 
   if (composer.hasUnsavedDraft()) {
-    const shouldReplace = window.confirm('Replace the current draft with this queued message for editing?')
+    const shouldReplace = window.confirm('当前输入框里还有未发送内容，是否替换为这条排队消息继续编辑？')
     if (!shouldReplace) return
   }
 
@@ -1353,17 +1380,23 @@ function onExportChat(): void {
 
 function buildThreadMarkdown(): string {
   const lines: string[] = []
-  const threadTitle = selectedThread.value?.title?.trim() || 'Untitled thread'
+  const threadTitle = selectedThread.value?.title?.trim() || '未命名会话'
   lines.push(`# ${escapeMarkdownText(threadTitle)}`)
   lines.push('')
-  lines.push(`- Exported: ${new Date().toISOString()}`)
-  lines.push(`- Thread ID: ${selectedThread.value?.id ?? ''}`)
+  lines.push(`- 导出时间：${new Date().toISOString()}`)
+  lines.push(`- 会话 ID：${selectedThread.value?.id ?? ''}`)
   lines.push('')
   lines.push('---')
   lines.push('')
 
   for (const message of filteredMessages.value) {
-    const roleLabel = message.role ? message.role.toUpperCase() : 'MESSAGE'
+    const roleLabel = message.role === 'user'
+      ? '用户'
+      : message.role === 'assistant'
+        ? 'Codex'
+        : message.role === 'system'
+          ? '系统'
+          : '消息'
     lines.push(`## ${roleLabel}`)
     lines.push('')
 
@@ -1375,21 +1408,21 @@ function buildThreadMarkdown(): string {
 
     if (message.commandExecution) {
       lines.push('```text')
-      lines.push(`command: ${message.commandExecution.command}`)
-      lines.push(`status: ${message.commandExecution.status}`)
+      lines.push(`命令：${message.commandExecution.command}`)
+      lines.push(`状态：${message.commandExecution.status}`)
       if (message.commandExecution.cwd) {
-        lines.push(`cwd: ${message.commandExecution.cwd}`)
+        lines.push(`目录：${message.commandExecution.cwd}`)
       }
       if (message.commandExecution.exitCode !== null) {
-        lines.push(`exitCode: ${message.commandExecution.exitCode}`)
+        lines.push(`退出码：${message.commandExecution.exitCode}`)
       }
-      lines.push(message.commandExecution.aggregatedOutput || '(no output)')
+      lines.push(message.commandExecution.aggregatedOutput || '（无输出）')
       lines.push('```')
       lines.push('')
     }
 
     if (message.fileAttachments && message.fileAttachments.length > 0) {
-      lines.push('Attachments:')
+      lines.push('附件：')
       for (const attachment of message.fileAttachments) {
         lines.push(`- ${attachment.path}`)
       }
@@ -1397,7 +1430,7 @@ function buildThreadMarkdown(): string {
     }
 
     if (message.images && message.images.length > 0) {
-      lines.push('Images:')
+      lines.push('图片：')
       for (const imageUrl of message.images) {
         lines.push(`- ${imageUrl}`)
       }
@@ -1496,7 +1529,7 @@ function loadDictationLanguagePref(): string {
 }
 
 function buildDictationLanguageOptions(): Array<{ value: string; label: string }> {
-  const options: Array<{ value: string; label: string }> = [{ value: 'auto', label: 'Auto-detect' }]
+  const options: Array<{ value: string; label: string }> = [{ value: 'auto', label: '自动识别' }]
   const seen = new Set<string>(['auto'])
   function formatLanguageLabel(value: string): string {
     const languageName = WHISPER_LANGUAGES[value] || value
@@ -1510,7 +1543,7 @@ function buildDictationLanguageOptions(): Array<{ value: string; label: string }
     seen.add(value)
     options.push({
       value,
-      label: `Preferred: ${formatLanguageLabel(value)}`,
+      label: `优先：${formatLanguageLabel(value)}`,
     })
   }
 
@@ -1757,8 +1790,8 @@ async function submitFirstMessageForNewThread(
     if (newThreadRuntime.value === 'worktree') {
       worktreeInitStatus.value = {
         phase: 'running',
-        title: 'Creating worktree',
-        message: 'Creating a worktree and running setup.',
+        title: '正在创建工作树',
+        message: '正在创建工作树并执行初始化。',
       }
       try {
         const created = await createWorktree(newThreadCwd.value)
@@ -1768,8 +1801,8 @@ async function submitFirstMessageForNewThread(
       } catch {
         worktreeInitStatus.value = {
           phase: 'error',
-          title: 'Worktree setup failed',
-          message: 'Unable to create worktree. Try again or switch to Local project.',
+          title: '工作树初始化失败',
+          message: '无法创建工作树，请重试或切换到当前项目。',
         }
         return
       }

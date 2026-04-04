@@ -38,12 +38,12 @@ function renderFrontendMissingHtml(message: string, details?: string[]): string 
   const lines = details && details.length > 0 ? `<pre>${details.join('\n')}</pre>` : ''
   return [
     '<!doctype html>',
-    '<html lang="en">',
-    '<head><meta charset="utf-8"><title>Codex Web UI Error</title></head>',
+    '<html lang="zh-CN">',
+    '<head><meta charset="utf-8"><title>Codex Web 界面错误</title></head>',
     '<body>',
     `<h1>${message}</h1>`,
     lines,
-    '<p><a href="/">Back to chat</a></p>',
+    '<p><a href="/">返回聊天页</a></p>',
     '</body>',
     '</html>',
   ].join('')
@@ -94,13 +94,13 @@ export function createServer(options: ServerOptions = {}): ServerInstance {
     const rawPath = typeof req.query.path === 'string' ? req.query.path : ''
     const localPath = normalizeLocalImagePath(rawPath)
     if (!localPath || !isAbsolute(localPath)) {
-      res.status(400).json({ error: 'Expected absolute local file path.' })
+      res.status(400).json({ error: '需要提供绝对本地文件路径。' })
       return
     }
 
     const contentType = IMAGE_CONTENT_TYPES[extname(localPath).toLowerCase()]
     if (!contentType) {
-      res.status(415).json({ error: 'Unsupported image type.' })
+      res.status(415).json({ error: '不支持的图片类型。' })
       return
     }
 
@@ -108,7 +108,7 @@ export function createServer(options: ServerOptions = {}): ServerInstance {
     res.setHeader('Cache-Control', 'private, max-age=300')
     res.sendFile(localPath, { dotfiles: 'allow' }, (error) => {
       if (!error) return
-      if (!res.headersSent) res.status(404).json({ error: 'Image file not found.' })
+      if (!res.headersSent) res.status(404).json({ error: '图片文件不存在。' })
     })
   })
 
@@ -117,7 +117,7 @@ export function createServer(options: ServerOptions = {}): ServerInstance {
     const rawPath = typeof req.query.path === 'string' ? req.query.path : ''
     const localPath = normalizeLocalPath(rawPath)
     if (!localPath || !isAbsolute(localPath)) {
-      res.status(400).json({ error: 'Expected absolute local file path.' })
+      res.status(400).json({ error: '需要提供绝对本地文件路径。' })
       return
     }
 
@@ -125,7 +125,7 @@ export function createServer(options: ServerOptions = {}): ServerInstance {
     res.setHeader('Content-Disposition', 'inline')
     res.sendFile(localPath, { dotfiles: 'allow' }, (error) => {
       if (!error) return
-      if (!res.headersSent) res.status(404).json({ error: 'File not found.' })
+      if (!res.headersSent) res.status(404).json({ error: '文件不存在。' })
     })
   })
 
@@ -134,7 +134,7 @@ export function createServer(options: ServerOptions = {}): ServerInstance {
     const rawPath = readWildcardPathParam(req.params.path)
     const localPath = decodeBrowsePath(rawPath)
     if (!localPath || !isAbsolute(localPath)) {
-      res.status(400).json({ error: 'Expected absolute local file path.' })
+      res.status(400).json({ error: '需要提供绝对本地文件路径。' })
       return
     }
 
@@ -149,10 +149,10 @@ export function createServer(options: ServerOptions = {}): ServerInstance {
 
       res.sendFile(localPath, { dotfiles: 'allow' }, (error) => {
         if (!error) return
-        if (!res.headersSent) res.status(404).json({ error: 'File not found.' })
+        if (!res.headersSent) res.status(404).json({ error: '文件不存在。' })
       })
     } catch {
-      res.status(404).json({ error: 'File not found.' })
+      res.status(404).json({ error: '文件不存在。' })
     }
   })
 
@@ -161,19 +161,19 @@ export function createServer(options: ServerOptions = {}): ServerInstance {
     const rawPath = readWildcardPathParam(req.params.path)
     const localPath = decodeBrowsePath(rawPath)
     if (!localPath || !isAbsolute(localPath)) {
-      res.status(400).json({ error: 'Expected absolute local file path.' })
+      res.status(400).json({ error: '需要提供绝对本地文件路径。' })
       return
     }
     try {
       const fileStat = await stat(localPath)
       if (!fileStat.isFile()) {
-        res.status(400).json({ error: 'Expected file path.' })
+        res.status(400).json({ error: '需要提供文件路径。' })
         return
       }
       const html = await createTextEditorHtml(localPath)
       res.status(200).type('text/html; charset=utf-8').send(html)
     } catch {
-      res.status(404).json({ error: 'File not found.' })
+      res.status(404).json({ error: '文件不存在。' })
     }
   })
 
@@ -181,11 +181,11 @@ export function createServer(options: ServerOptions = {}): ServerInstance {
     const rawPath = readWildcardPathParam(req.params.path)
     const localPath = decodeBrowsePath(rawPath)
     if (!localPath || !isAbsolute(localPath)) {
-      res.status(400).json({ error: 'Expected absolute local file path.' })
+      res.status(400).json({ error: '需要提供绝对本地文件路径。' })
       return
     }
     if (!(await isTextEditableFile(localPath))) {
-      res.status(415).json({ error: 'Only text-like files are editable.' })
+      res.status(415).json({ error: '仅支持编辑文本类文件。' })
       return
     }
     const body = typeof req.body === 'string' ? req.body : ''
@@ -193,7 +193,7 @@ export function createServer(options: ServerOptions = {}): ServerInstance {
       await writeFile(localPath, body, 'utf8')
       res.status(200).json({ ok: true })
     } catch {
-      res.status(404).json({ error: 'File not found.' })
+      res.status(404).json({ error: '文件不存在。' })
     }
   })
 
@@ -211,10 +211,10 @@ export function createServer(options: ServerOptions = {}): ServerInstance {
         .status(503)
         .type('text/html; charset=utf-8')
         .send(
-          renderFrontendMissingHtml('Codex web UI assets are missing.', [
-            `Expected: ${spaEntryFile}`,
-            'If running from source, build frontend assets with: pnpm run build:frontend',
-            'If running with npx, clear the npx cache and reinstall codexapp.',
+          renderFrontendMissingHtml('Codex Web 前端资源缺失。', [
+            `期望文件：${spaEntryFile}`,
+            '如果是源码运行，请先执行：pnpm run build:frontend',
+            '如果使用 npx 运行，请清理 npx 缓存后重新安装 codexapp。',
           ]),
         )
       return
@@ -223,7 +223,7 @@ export function createServer(options: ServerOptions = {}): ServerInstance {
     res.sendFile(spaEntryFile, (error) => {
       if (!error) return
       if (!res.headersSent) {
-        res.status(404).type('text/html; charset=utf-8').send(renderFrontendMissingHtml('Frontend entry file not found.'))
+        res.status(404).type('text/html; charset=utf-8').send(renderFrontendMissingHtml('前端入口文件不存在。'))
       }
     })
   })

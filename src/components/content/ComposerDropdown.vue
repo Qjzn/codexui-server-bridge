@@ -43,7 +43,7 @@
             </button>
           </li>
           <li v-if="filteredOptions.length === 0" class="composer-dropdown-empty">
-            No matching projects
+            没有匹配的项目
           </li>
         </ul>
 
@@ -59,8 +59,8 @@
               @keydown.esc.prevent="onCancelAdd"
             />
             <div class="composer-dropdown-add-actions">
-              <button type="button" class="composer-dropdown-add-btn" @click="onConfirmAdd">Open</button>
-              <button type="button" class="composer-dropdown-add-btn" @click="onCancelAdd">Cancel</button>
+              <button type="button" class="composer-dropdown-add-btn" @click="onConfirmAdd">打开</button>
+              <button type="button" class="composer-dropdown-add-btn" @click="onCancelAdd">取消</button>
             </div>
           </template>
           <button
@@ -123,9 +123,9 @@ const selectedLabel = computed(() => {
 const openDirection = computed(() => props.openDirection ?? 'down')
 const enableSearch = computed(() => props.enableSearch === true)
 const showAddAction = computed(() => props.showAddAction === true)
-const searchPlaceholderText = computed(() => props.searchPlaceholder?.trim() || 'Quick search projects')
-const addActionLabelText = computed(() => props.addActionLabel?.trim() || 'Add new project')
-const addPlaceholderText = computed(() => props.addPlaceholder?.trim() || 'Project name or absolute path')
+const searchPlaceholderText = computed(() => props.searchPlaceholder?.trim() || '快速搜索项目')
+const addActionLabelText = computed(() => props.addActionLabel?.trim() || '新增项目')
+const addPlaceholderText = computed(() => props.addPlaceholder?.trim() || '项目名或绝对路径')
 const filteredOptions = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
   if (!query) return props.options

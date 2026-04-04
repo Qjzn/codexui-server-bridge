@@ -1,5 +1,5 @@
 <template>
-  <div class="runtime-toggle" role="radiogroup" aria-label="Continue in">
+  <div class="runtime-toggle" role="radiogroup" aria-label="继续方式">
     <button
       v-for="option in options"
       :key="option.value"
@@ -31,8 +31,8 @@ const emit = defineEmits<{
 }>()
 
 const options = [
-  { value: 'local' as const, label: 'Local project', icon: IconTablerFolder },
-  { value: 'worktree' as const, label: 'New worktree', icon: IconTablerGitFork },
+  { value: 'local' as const, label: '当前项目', icon: IconTablerFolder },
+  { value: 'worktree' as const, label: '新建工作树', icon: IconTablerGitFork },
 ]
 
 function onSelect(value: RuntimeMode): void {

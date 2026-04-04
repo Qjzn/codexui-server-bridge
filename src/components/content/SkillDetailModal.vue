@@ -14,12 +14,12 @@
             <div class="sdm-title-col">
               <div class="sdm-title-row">
                 <h3 class="sdm-title">{{ skill.displayName || skill.name }}</h3>
-                <span v-if="skill.installed && !effectiveEnabled" class="sdm-badge-disabled">Disabled</span>
+                <span v-if="skill.installed && !effectiveEnabled" class="sdm-badge-disabled">已禁用</span>
               </div>
               <span class="sdm-owner">{{ skill.owner }}</span>
             </div>
           </div>
-          <button class="sdm-close" type="button" aria-label="Close" @click="$emit('close')">
+          <button class="sdm-close" type="button" aria-label="关闭" @click="$emit('close')">
             <IconTablerX class="sdm-close-icon" />
           </button>
         </div>
@@ -27,10 +27,10 @@
         <div class="sdm-body">
           <p v-if="effectiveDescription" class="sdm-desc">{{ effectiveDescription }}</p>
 
-          <div v-if="isLoadingReadme" class="sdm-readme-loading">Loading skill contents...</div>
+          <div v-if="isLoadingReadme" class="sdm-readme-loading">正在加载技能内容...</div>
           <div v-else-if="readmeContent" class="sdm-readme" v-html="renderedReadme"></div>
 
-          <a class="sdm-link" :href="skill.url" target="_blank" rel="noopener noreferrer">View on GitHub</a>
+          <a class="sdm-link" :href="skill.url" target="_blank" rel="noopener noreferrer">查看 GitHub 仓库</a>
         </div>
 
         <div class="sdm-footer">
@@ -42,7 +42,7 @@
               :disabled="isActing"
               @click="onUninstall"
             >
-              {{ props.isUninstalling ? 'Uninstalling...' : 'Uninstall' }}
+              {{ props.isUninstalling ? '卸载中...' : '卸载' }}
             </button>
             <button
               v-else
@@ -51,7 +51,7 @@
               :disabled="isActing"
               @click="onInstall"
             >
-              {{ props.isInstalling ? 'Installing...' : 'Install' }}
+              {{ props.isInstalling ? '安装中...' : '安装' }}
             </button>
 
             <button
@@ -61,7 +61,7 @@
               :disabled="isActing"
               @click="onToggleEnabled"
             >
-              {{ effectiveEnabled ? 'Disable' : 'Enable' }}
+              {{ effectiveEnabled ? '禁用' : '启用' }}
             </button>
 
             <button
@@ -70,7 +70,7 @@
               type="button"
               @click="onBrowseFiles"
             >
-              Browse files
+              浏览文件
             </button>
           </div>
         </div>

@@ -50,7 +50,7 @@
           </button>
         </li>
       </ul>
-      <div v-else class="search-dropdown-empty">No results</div>
+      <div v-else class="search-dropdown-empty">没有结果</div>
     </div>
   </div>
 </template>
@@ -89,12 +89,12 @@ const openDirection = computed(() => props.openDirection ?? 'down')
 const selected = computed(() => new Set(props.selectedValues))
 
 const displayLabel = computed(() => {
-  if (props.selectedValues.length === 0) return props.placeholder || 'Select...'
+  if (props.selectedValues.length === 0) return props.placeholder || '请选择...'
   if (props.selectedValues.length === 1) {
     const opt = props.options.find((o) => o.value === props.selectedValues[0])
-    return opt?.label || props.placeholder || 'Select...'
+    return opt?.label || props.placeholder || '请选择...'
   }
-  return `${props.selectedValues.length} selected`
+  return `已选 ${props.selectedValues.length} 项`
 })
 
 const filtered = computed(() => {

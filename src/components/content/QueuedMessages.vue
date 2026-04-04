@@ -8,9 +8,9 @@
       </svg>
       <span class="queued-row-text">{{ getMessagePreview(msg) }}</span>
       <div class="queued-row-actions">
-        <button class="queued-row-edit" type="button" title="Edit queued message" @click="$emit('edit', msg.id)">Edit</button>
-        <button class="queued-row-steer" type="button" title="Send now without interrupting work" @click="$emit('steer', msg.id)">Steer</button>
-        <button class="queued-row-delete" type="button" aria-label="Delete queued message" title="Delete queued message" @click="$emit('delete', msg.id)">
+        <button class="queued-row-edit" type="button" title="编辑排队消息" @click="$emit('edit', msg.id)">编辑</button>
+        <button class="queued-row-steer" type="button" title="立即发送，不打断当前任务" @click="$emit('steer', msg.id)">插话</button>
+        <button class="queued-row-delete" type="button" aria-label="删除排队消息" title="删除排队消息" @click="$emit('delete', msg.id)">
           <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" aria-hidden="true">
             <path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
               d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" />
@@ -50,11 +50,11 @@ function getMessagePreview(message: QueuedMessageRow): string {
   const fileCount = message.fileAttachments?.length ?? 0
   const skillCount = message.skills?.length ?? 0
 
-  if (imageCount > 0) parts.push(`${imageCount} image${imageCount === 1 ? '' : 's'}`)
-  if (fileCount > 0) parts.push(`${fileCount} file${fileCount === 1 ? '' : 's'}`)
-  if (skillCount > 0) parts.push(`${skillCount} skill${skillCount === 1 ? '' : 's'}`)
+  if (imageCount > 0) parts.push(`${imageCount} 张图片`)
+  if (fileCount > 0) parts.push(`${fileCount} 个文件`)
+  if (skillCount > 0) parts.push(`${skillCount} 个技能`)
 
-  return parts.join(', ') || '(empty queued message)'
+  return parts.join('，') || '（空排队消息）'
 }
 </script>
 

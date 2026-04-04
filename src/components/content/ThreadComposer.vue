@@ -7,11 +7,11 @@
     <div class="thread-composer-shell" :class="{ 'thread-composer-shell--no-top-radius': hasQueueAbove }">
       <div v-if="selectedImages.length > 0" class="thread-composer-attachments">
         <div v-for="image in selectedImages" :key="image.id" class="thread-composer-attachment">
-          <img class="thread-composer-attachment-image" :src="image.url" :alt="image.name || 'Selected image'" />
+          <img class="thread-composer-attachment-image" :src="image.url" :alt="image.name || '已选图片'" />
           <button
             class="thread-composer-attachment-remove"
             type="button"
-            :aria-label="`Remove ${image.name || 'image'}`"
+            :aria-label="`移除${image.name || '图片'}`"
             :disabled="isInteractionDisabled"
             @click="removeImage(image.id)"
           >
@@ -26,16 +26,16 @@
           <span class="thread-composer-folder-chip-name" :title="group.name">{{ group.name }}</span>
           <span class="thread-composer-folder-chip-meta">
             <template v-if="group.isUploading">
-              {{ getFolderUploadPercent(group) }}% uploading ({{ group.processed }}/{{ group.total }})
+              {{ getFolderUploadPercent(group) }}% 上传中（{{ group.processed }}/{{ group.total }}）
             </template>
             <template v-else>
-              {{ group.filePaths.length }} file{{ group.filePaths.length === 1 ? '' : 's' }}
+              {{ group.filePaths.length }} 个文件
             </template>
           </span>
           <button
             class="thread-composer-folder-chip-remove"
             type="button"
-            :aria-label="`Remove folder ${group.name}`"
+            :aria-label="`移除文件夹 ${group.name}`"
             :disabled="isInteractionDisabled"
             @click="removeFolderAttachment(group.id)"
           >×</button>
@@ -49,7 +49,7 @@
           <button
             class="thread-composer-file-chip-remove"
             type="button"
-            :aria-label="`Remove ${att.label}`"
+            :aria-label="`移除 ${att.label}`"
             :disabled="isInteractionDisabled"
             @click="removeFileAttachment(att.fsPath)"
           >×</button>
@@ -62,7 +62,7 @@
           <button
             class="thread-composer-skill-chip-remove"
             type="button"
-            :aria-label="`Remove skill ${skill.name}`"
+            :aria-label="`移除技能 ${skill.name}`"
             @click="removeSkill(skill.path)"
           >×</button>
         </span>
@@ -94,7 +94,7 @@
               </span>
             </button>
           </template>
-          <div v-else class="thread-composer-file-mention-empty">No matching files</div>
+          <div v-else class="thread-composer-file-mention-empty">没有匹配文件</div>
         </div>
         <textarea
           ref="inputRef"
@@ -123,7 +123,7 @@
           <button
             class="thread-composer-attach-trigger"
             type="button"
-            aria-label="Add photos & files"
+            aria-label="添加图片和文件"
             :disabled="isInteractionDisabled"
             @click="toggleAttachMenu"
           >
@@ -137,7 +137,7 @@
               :disabled="isInteractionDisabled"
               @click="triggerPhotoLibrary"
             >
-              Add photos & files
+              添加图片和文件
             </button>
             <button
               class="thread-composer-attach-item"
@@ -145,7 +145,7 @@
               :disabled="isInteractionDisabled"
               @click="triggerFolderPicker"
             >
-              Add folder
+              添加文件夹
             </button>
             <button
               class="thread-composer-attach-item"
@@ -153,11 +153,11 @@
               :disabled="isInteractionDisabled"
               @click="triggerCameraCapture"
             >
-              Take photo
+              拍照
             </button>
             <div class="thread-composer-attach-separator" />
             <div class="thread-composer-attach-mode">
-              <span class="thread-composer-attach-mode-label">In-progress send</span>
+              <span class="thread-composer-attach-mode-label">执行中发送</span>
               <div class="thread-composer-attach-mode-buttons">
                 <button
                   class="thread-composer-attach-mode-button"
@@ -166,7 +166,7 @@
                   :disabled="isInteractionDisabled"
                   @click="setActiveInProgressMode('steer')"
                 >
-                  Steer
+                  插话
                 </button>
                 <button
                   class="thread-composer-attach-mode-button"
@@ -175,7 +175,7 @@
                   :disabled="isInteractionDisabled"
                   @click="setActiveInProgressMode('queue')"
                 >
-                  Queue
+                  排队
                 </button>
               </div>
             </div>
@@ -186,12 +186,12 @@
               type="button"
               role="switch"
               :aria-checked="selectedSpeedMode === 'fast'"
-              :aria-label="`Fast mode ${selectedSpeedMode === 'fast' ? 'enabled' : 'disabled'}`"
+              :aria-label="`快速模式${selectedSpeedMode === 'fast' ? '已开启' : '已关闭'}`"
               :disabled="isSpeedToggleDisabled"
               @click="onToggleSpeedMode"
             >
               <span class="thread-composer-attach-setting-copy">
-                <span class="thread-composer-attach-setting-label">Fast mode</span>
+                <span class="thread-composer-attach-setting-label">快速模式</span>
                 <span class="thread-composer-attach-setting-description">{{ speedModeDescription }}</span>
               </span>
               <span
@@ -212,7 +212,7 @@
             :model-value="selectedModel"
             :options="modelOptions"
             :selected-prefix-icon="showFastModeModelIcon ? IconTablerBolt : null"
-            placeholder="Model"
+            placeholder="模型"
             open-direction="up"
             :disabled="disabled || !activeThreadId || models.length === 0 || isTurnInProgress"
             @update:model-value="onModelSelect"
@@ -222,8 +222,8 @@
             class="thread-composer-control"
             :options="skillDropdownOptions"
             :selected-values="selectedSkillPaths"
-            placeholder="Skills"
-            search-placeholder="Search skills..."
+            placeholder="技能"
+            search-placeholder="搜索技能..."
             open-direction="up"
             :disabled="disabled || !activeThreadId || isTurnInProgress"
             @toggle="onSkillDropdownToggle"
@@ -233,7 +233,7 @@
             class="thread-composer-control"
             :model-value="selectedReasoningEffort"
             :options="reasoningOptions"
-            placeholder="Thinking"
+            placeholder="思考强度"
             open-direction="up"
             :disabled="disabled || !activeThreadId || isTurnInProgress"
             @update:model-value="onReasoningEffortSelect"
@@ -278,7 +278,7 @@
             v-if="isTurnInProgress && !hasSubmitContent"
             class="thread-composer-stop"
             type="button"
-            aria-label="Stop"
+            aria-label="停止"
             :disabled="disabled || !activeThreadId || isInterruptingTurn"
             @click="onInterrupt"
           >
@@ -289,8 +289,8 @@
             class="thread-composer-submit"
             :class="{ 'thread-composer-submit--queue': isTurnInProgress && activeInProgressMode === 'queue' }"
             type="button"
-            :aria-label="isTurnInProgress && activeInProgressMode === 'queue' ? 'Queue message' : 'Send message'"
-            :title="isTurnInProgress ? `Send as ${activeInProgressMode}` : 'Send'"
+            :aria-label="isTurnInProgress && activeInProgressMode === 'queue' ? '排队发送' : '发送消息'"
+            :title="isTurnInProgress ? `以${formatInProgressModeLabel(activeInProgressMode)}方式发送` : '发送'"
             :disabled="!canSubmit"
             @click="onSubmit(isTurnInProgress ? activeInProgressMode : 'steer')"
           >
@@ -447,15 +447,15 @@ const {
   },
   onEmpty: () => {
     dictationFeedback.value = props.dictationClickToToggle
-      ? 'No speech detected. Click again after speaking.'
-      : 'No speech detected. Hold the mic and speak.'
+      ? '未识别到语音，请说完后再点一次。'
+      : '未识别到语音，请按住麦克风后再说话。'
   },
   onError: (error) => {
     if (error instanceof DOMException && error.name === 'NotAllowedError') {
-      dictationFeedback.value = 'Microphone access was denied.'
+      dictationFeedback.value = '麦克风权限被拒绝。'
       return
     }
-    dictationFeedback.value = error instanceof Error ? error.message : 'Dictation failed.'
+    dictationFeedback.value = error instanceof Error ? error.message : '语音听写失败。'
   },
 })
 const attachMenuRootRef = ref<HTMLElement | null>(null)
@@ -480,12 +480,12 @@ const DRAFT_STORAGE_PREFIX = 'codex-web-local.thread-draft.v1.'
 let lastActiveThreadId = ''
 
 const reasoningOptions: Array<{ value: ReasoningEffort; label: string }> = [
-  { value: 'none', label: 'None' },
-  { value: 'minimal', label: 'Minimal' },
-  { value: 'low', label: 'Low' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'high', label: 'High' },
-  { value: 'xhigh', label: 'Extra high' },
+  { value: 'none', label: '无' },
+  { value: 'minimal', label: '极低' },
+  { value: 'low', label: '低' },
+  { value: 'medium', label: '中' },
+  { value: 'high', label: '高' },
+  { value: 'xhigh', label: '极高' },
 ]
 function formatModelLabel(modelId: string): string {
   return modelId.trim().replace(/^gpt/i, 'GPT')
@@ -535,20 +535,23 @@ const isSpeedToggleDisabled = computed(() =>
 )
 const speedModeDescription = computed(() => {
   if (props.isUpdatingSpeedMode) {
-    return 'Saving speed setting...'
+    return '正在保存速度设置...'
   }
   return props.selectedSpeedMode === 'fast'
-    ? 'About 1.5x faster, with credits used at 2x'
-    : 'Default speed with normal credit usage'
+    ? '约 1.5 倍速度，额度消耗按 2 倍计算'
+    : '默认速度，按正常额度消耗'
 })
 const inProgressMode = computed<'steer' | 'queue'>(() =>
   props.inProgressSubmitMode === 'steer' ? 'steer' : 'queue',
 )
 const activeInProgressMode = ref<'steer' | 'queue'>(inProgressMode.value)
+function formatInProgressModeLabel(mode: 'steer' | 'queue'): string {
+  return mode === 'queue' ? '排队' : '插话'
+}
 const isDictationRecording = computed(() => dictationState.value === 'recording')
 const dictationButtonLabel = computed(() => {
-  if (dictationState.value === 'recording') return 'Stop dictation'
-  return props.dictationClickToToggle ? 'Click to dictate' : 'Hold to dictate'
+  if (dictationState.value === 'recording') return '停止听写'
+  return props.dictationClickToToggle ? '点击开始听写' : '按住开始听写'
 })
 const dictationErrorText = computed(() =>
   dictationState.value === 'idle' ? dictationFeedback.value.trim() : '',
@@ -561,7 +564,7 @@ const dictationDurationLabel = computed(() => {
 })
 
 const placeholderText = computed(() =>
-  props.activeThreadId ? 'Type a message... (@ for files, / for skills)' : 'Select a thread to send a message',
+  props.activeThreadId ? '输入消息...（@ 引用文件，/ 选择技能）' : '请先选择一个会话再发送消息',
 )
 const hasSubmitContent = computed(() =>
   draft.value.trim().length > 0 || selectedImages.value.length > 0 || fileAttachments.value.length > 0,
@@ -596,7 +599,7 @@ function replaceDraftState(payload: ComposerDraftPayload): void {
   draft.value = payload.text
   selectedImages.value = payload.imageUrls.map((url, index) => ({
     id: `queued-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`,
-    name: `Image ${index + 1}`,
+    name: `图片 ${index + 1}`,
     url,
   }))
   selectedSkills.value = payload.skills.map((skill) => (
@@ -851,7 +854,7 @@ async function addFolderFiles(files: FileList | null): Promise<void> {
   const generation = draftGeneration.value
   const rows = Array.from(files)
   const firstRelativePath = (rows[0] as File & { webkitRelativePath?: string }).webkitRelativePath || rows[0].name
-  const folderName = firstRelativePath.split('/').filter(Boolean)[0] || 'Folder'
+  const folderName = firstRelativePath.split('/').filter(Boolean)[0] || '文件夹'
   const groupId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
   folderUploadGroups.value = [
     ...folderUploadGroups.value,

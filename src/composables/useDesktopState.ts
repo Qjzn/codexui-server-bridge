@@ -109,6 +109,44 @@ function clamp(value: number, minValue: number, maxValue: number): number {
   return Math.min(Math.max(value, minValue), maxValue)
 }
 
+function localizeActivityText(value: string): string {
+  const normalized = value.replace(/\s+/gu, ' ').trim()
+  if (!normalized) return ''
+
+  const directMap: Record<string, string> = {
+    'Thinking': '思考中',
+    'Running command': '执行命令',
+    'Preparing context': '准备上下文',
+    'Streaming reply': '生成回复',
+    'Reading messages': '读取消息',
+    'Syncing': '同步中',
+    'Queued': '排队中',
+    'Model': '模型',
+    'Speed': '速度',
+    'Fast': '快速',
+    'Standard': '标准',
+    'default': '默认',
+    'minimal': '极低',
+    'low': '低',
+    'medium': '中',
+    'high': '高',
+    'xhigh': '极高',
+    'none': '无',
+  }
+
+  if (directMap[normalized]) return directMap[normalized]
+
+  const colonMatch = normalized.match(/^(Model|Thinking|Speed):\s*(.+)$/u)
+  if (colonMatch) {
+    const label = directMap[colonMatch[1]] ?? colonMatch[1]
+    const rawValue = colonMatch[2].trim()
+    const translatedValue = directMap[rawValue] ?? rawValue
+    return `${label}：${translatedValue}`
+  }
+
+  return normalized
+}
+
 function normalizeThreadScrollState(value: unknown): ThreadScrollState | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
 
@@ -768,8 +806,8 @@ export function useDesktopState() {
 
     if (!activity && !reasoningText && !errorText && !isInProgress) return null
     return {
-      activityLabel: activity?.label || 'Thinking',
-      activityDetails: activity?.details ?? [],
+      activityLabel: localizeActivityText(activity?.label || 'Thinking'),
+      activityDetails: (activity?.details ?? []).map((line) => localizeActivityText(line)),
       reasoningText,
       errorText,
     }
@@ -973,7 +1011,11 @@ export function useDesktopState() {
     const modelLabel = modelId.trim() || 'default'
     const effortLabel = effort || 'default'
     const speedLabel = selectedSpeedMode.value === 'fast' ? 'Fast' : 'Standard'
-    return [`Model: ${modelLabel}`, `Thinking: ${effortLabel}`, `Speed: ${speedLabel}`]
+    return [
+      localizeActivityText(`Model: ${modelLabel}`),
+      localizeActivityText(`Thinking: ${effortLabel}`),
+      localizeActivityText(`Speed: ${speedLabel}`),
+    ]
   }
 
   async function refreshModelPreferences(): Promise<void> {
@@ -1226,7 +1268,7 @@ export function useDesktopState() {
       .filter((line) => line.length > 0 && line !== normalizedLabel)
     const mergedDetails = Array.from(new Set([...(previous?.details ?? []), ...incomingDetails])).slice(-3)
     const nextActivity: TurnActivityState = {
-      label: normalizedLabel,
+      label: localizeActivityText(normalizedLabel),
       details: mergedDetails,
     }
 
@@ -1597,7 +1639,7 @@ export function useDesktopState() {
   }
 
   function sanitizeDisplayText(value: string): string {
-    return value.replace(/\s+/gu, ' ').trim()
+    return localizeActivityText(value)
   }
 
   function readTurnActivity(notification: RpcNotification): { threadId: string; activity: TurnActivityState } | null {
