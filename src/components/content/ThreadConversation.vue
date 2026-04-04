@@ -1,18 +1,32 @@
 <template>
   <section class="conversation-root">
-    <p v-if="showBlockingLoading" class="conversation-loading">Loading messages...</p>
+    <div v-if="showBlockingLoading" class="conversation-loading" aria-hidden="true">
+      <span class="conversation-loading-kicker">加载会话</span>
+      <span class="conversation-loading-card conversation-loading-card-user">
+        <span class="conversation-loading-line conversation-loading-line-short" />
+      </span>
+      <span class="conversation-loading-card">
+        <span class="conversation-loading-line conversation-loading-line-wide" />
+        <span class="conversation-loading-line conversation-loading-line-medium" />
+        <span class="conversation-loading-line conversation-loading-line-short" />
+      </span>
+      <span class="conversation-loading-card">
+        <span class="conversation-loading-line conversation-loading-line-wide" />
+        <span class="conversation-loading-line conversation-loading-line-short" />
+      </span>
+    </div>
 
     <p
       v-else-if="!hasRenderableConversation"
       class="conversation-empty"
     >
-      No messages in this thread yet.
+      当前会话还没有消息。
     </p>
 
     <template v-else>
       <div v-if="showInlineLoading" class="conversation-inline-loading" aria-live="polite">
         <span class="conversation-inline-loading-bar" />
-        <span class="conversation-inline-loading-text">Syncing latest messages...</span>
+        <span class="conversation-inline-loading-text">正在同步最新消息...</span>
       </div>
 
       <ul ref="conversationListRef" class="conversation-list" @scroll="onConversationScroll">
@@ -30,17 +44,17 @@
               <p v-if="readRequestReason(request)" class="request-reason">{{ readRequestReason(request) }}</p>
 
               <section v-if="request.method === 'item/commandExecution/requestApproval'" class="request-actions">
-                <button type="button" class="request-button request-button-primary" @click="onRespondApproval(request.id, 'accept')">Accept</button>
-                <button type="button" class="request-button" @click="onRespondApproval(request.id, 'acceptForSession')">Accept for Session</button>
-                <button type="button" class="request-button" @click="onRespondApproval(request.id, 'decline')">Decline</button>
-                <button type="button" class="request-button" @click="onRespondApproval(request.id, 'cancel')">Cancel</button>
+                <button type="button" class="request-button request-button-primary" @click="onRespondApproval(request.id, 'accept')">允许</button>
+                <button type="button" class="request-button" @click="onRespondApproval(request.id, 'acceptForSession')">本次会话始终允许</button>
+                <button type="button" class="request-button" @click="onRespondApproval(request.id, 'decline')">拒绝</button>
+                <button type="button" class="request-button" @click="onRespondApproval(request.id, 'cancel')">取消</button>
               </section>
 
               <section v-else-if="request.method === 'item/fileChange/requestApproval'" class="request-actions">
-                <button type="button" class="request-button request-button-primary" @click="onRespondApproval(request.id, 'accept')">Accept</button>
-                <button type="button" class="request-button" @click="onRespondApproval(request.id, 'acceptForSession')">Accept for Session</button>
-                <button type="button" class="request-button" @click="onRespondApproval(request.id, 'decline')">Decline</button>
-                <button type="button" class="request-button" @click="onRespondApproval(request.id, 'cancel')">Cancel</button>
+                <button type="button" class="request-button request-button-primary" @click="onRespondApproval(request.id, 'accept')">允许</button>
+                <button type="button" class="request-button" @click="onRespondApproval(request.id, 'acceptForSession')">本次会话始终允许</button>
+                <button type="button" class="request-button" @click="onRespondApproval(request.id, 'decline')">拒绝</button>
+                <button type="button" class="request-button" @click="onRespondApproval(request.id, 'cancel')">取消</button>
               </section>
 
               <section v-else-if="request.method === 'item/tool/requestUserInput'" class="request-user-input">
@@ -65,24 +79,24 @@
                     class="request-input"
                     type="text"
                     :value="readQuestionOtherAnswer(request.id, question.id)"
-                    placeholder="Other answer"
+                    placeholder="其他答案"
                     @input="onQuestionOtherAnswerInput(request.id, question.id, $event)"
                   />
                 </div>
 
                 <button type="button" class="request-button request-button-primary" @click="onRespondToolRequestUserInput(request)">
-                  Submit Answers
+                  提交答案
                 </button>
               </section>
 
               <section v-else-if="request.method === 'item/tool/call'" class="request-actions">
-                <button type="button" class="request-button request-button-primary" @click="onRespondToolCallFailure(request.id)">Fail Tool Call</button>
-                <button type="button" class="request-button" @click="onRespondToolCallSuccess(request.id)">Success (Empty)</button>
+                <button type="button" class="request-button request-button-primary" @click="onRespondToolCallFailure(request.id)">返回失败</button>
+                <button type="button" class="request-button" @click="onRespondToolCallSuccess(request.id)">返回成功（空结果）</button>
               </section>
 
               <section v-else class="request-actions">
-                <button type="button" class="request-button request-button-primary" @click="onRespondEmptyResult(request.id)">Return Empty Result</button>
-                <button type="button" class="request-button" @click="onRejectUnknownRequest(request.id)">Reject Request</button>
+                <button type="button" class="request-button request-button-primary" @click="onRespondEmptyResult(request.id)">返回空结果</button>
+                <button type="button" class="request-button" @click="onRejectUnknownRequest(request.id)">拒绝请求</button>
               </section>
             </article>
           </div>
@@ -90,7 +104,7 @@
       </li>
 
       <li
-        v-for="message in messages"
+        v-for="(message, messageIndex) in messages"
         :key="message.id"
         class="conversation-item"
         :class="{ 'conversation-item-actionable': canShowMessageActions(message) }"
@@ -122,6 +136,9 @@
 
         <div v-else class="message-row" :data-role="message.role" :data-message-type="message.messageType || ''">
           <div class="message-stack" :data-role="message.role">
+            <p v-if="messageRoleLabel(message, messageIndex)" class="message-eyebrow" :data-role="message.role">
+              {{ messageRoleLabel(message, messageIndex) }}
+            </p>
             <article class="message-body" :data-role="message.role">
               <ul
                 v-if="message.images && message.images.length > 0"
@@ -230,7 +247,7 @@
                       <img
                         class="message-image-preview message-markdown-image"
                         :src="block.url"
-                        :alt="block.alt || 'Embedded message image'"
+                        :alt="block.alt || '消息内图片'"
                         loading="lazy"
                         @error="onMarkdownImageError(message.id, blockIndex)"
                       />
@@ -245,21 +262,21 @@
                 v-if="canCopyMessage(message)"
                 class="message-action-button"
                 type="button"
-                title="Copy message text"
+                title="复制消息内容"
                 @click="onCopyMessage(message)"
               >
                 <IconTablerCopy class="message-action-icon" />
-                <span class="message-action-label">Copy</span>
+                <span class="message-action-label">复制</span>
               </button>
               <button
                 v-if="canRollbackMessage(message)"
                 class="message-action-button"
                 type="button"
-                title="Rollback to this message (remove this turn and all after it)"
+                title="回滚到这条消息，并移除其后的当前轮次内容"
                 @click="onRollback(message)"
               >
                 <IconTablerArrowBackUp class="message-action-icon" />
-                <span class="message-action-label">Rollback</span>
+                <span class="message-action-label">回滚</span>
               </button>
             </div>
           </div>
@@ -295,7 +312,7 @@
       >
         <IconTablerArrowUp class="conversation-jump-to-latest-icon" />
         <span class="conversation-jump-to-latest-label">
-          {{ hasPendingBelowFoldUpdates ? 'Latest output' : 'Bottom' }}
+          {{ hasPendingBelowFoldUpdates ? '最新输出' : '回到底部' }}
         </span>
         <span v-if="hasPendingBelowFoldUpdates" class="conversation-jump-to-latest-badge" />
       </button>
@@ -303,10 +320,10 @@
 
     <div v-if="modalImageUrl.length > 0" class="image-modal-backdrop" @click="closeImageModal">
       <div class="image-modal-content" @click.stop>
-        <button class="image-modal-close" type="button" aria-label="Close image preview" @click="closeImageModal">
+        <button class="image-modal-close" type="button" aria-label="关闭图片预览" @click="closeImageModal">
           <IconTablerX class="icon-svg" />
         </button>
-        <img class="image-modal-image" :src="modalImageUrl" alt="Expanded message image" />
+        <img class="image-modal-image" :src="modalImageUrl" alt="放大的消息图片" />
       </div>
     </div>
 
@@ -318,10 +335,10 @@
       @click.stop
     >
       <button type="button" class="file-link-context-menu-item" @click="openFileLinkContextBrowse">
-        Open link
+        打开链接
       </button>
       <button type="button" class="file-link-context-menu-item" @click="copyFileLinkContextLink">
-        Copy link
+        复制链接
       </button>
       <button
         v-if="fileLinkContextEditUrl"
@@ -329,7 +346,7 @@
         class="file-link-context-menu-item"
         @click="openFileLinkContextEdit"
       >
-        Edit file
+        编辑文件
       </button>
     </div>
   </section>
@@ -385,11 +402,11 @@ function commandStatusLabel(message: UiMessage): string {
   const ce = message.commandExecution
   if (!ce) return ''
   switch (ce.status) {
-    case 'inProgress': return '⟳ Running'
-    case 'completed': return ce.exitCode === 0 ? '✓ Completed' : `✗ Exit ${ce.exitCode ?? '?'}`
-    case 'failed': return '✗ Failed'
-    case 'declined': return '⊘ Declined'
-    case 'interrupted': return '⊘ Interrupted'
+    case 'inProgress': return '⟳ 执行中'
+    case 'completed': return ce.exitCode === 0 ? '✓ 已完成' : `✗ 退出 ${ce.exitCode ?? '?'}`
+    case 'failed': return '✗ 执行失败'
+    case 'declined': return '⊘ 已拒绝'
+    case 'interrupted': return '⊘ 已中断'
     default: return ''
   }
 }
@@ -482,7 +499,7 @@ const showJumpToLatestButton = computed(() => (
   !shouldLockToBottom()
 ))
 const jumpToLatestTitle = computed(() => (
-  hasPendingBelowFoldUpdates.value ? 'Jump to the latest output' : 'Back to the bottom'
+  hasPendingBelowFoldUpdates.value ? '跳到最新输出' : '回到底部'
 ))
 
 type ParsedToolQuestion = {
@@ -1380,6 +1397,32 @@ function canShowMessageActions(message: UiMessage): boolean {
   return canCopyMessage(message) || canRollbackMessage(message)
 }
 
+function findPreviousVisibleMessage(index: number): UiMessage | null {
+  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+    const candidate = props.messages[cursor]
+    if (!candidate || isCommandMessage(candidate)) continue
+    return candidate
+  }
+  return null
+}
+
+function messageRoleLabel(message: UiMessage, index: number): string {
+  const previousMessage = findPreviousVisibleMessage(index)
+  if (
+    previousMessage &&
+    previousMessage.role === message.role &&
+    previousMessage.messageType !== 'worked' &&
+    message.messageType !== 'worked'
+  ) {
+    return ''
+  }
+
+  if (message.role === 'user') return '你'
+  if (message.role === 'assistant') return 'Codex'
+  if (message.role === 'system') return '系统'
+  return ''
+}
+
 async function onCopyMessage(message: UiMessage): Promise<void> {
   if (!canCopyMessage(message)) return
   const text = message.text.trim()
@@ -1672,19 +1715,62 @@ onBeforeUnmount(() => {
 }
 
 .conversation-loading {
-  @apply m-0 px-2 sm:px-6 text-sm text-slate-500;
+  @apply flex flex-col gap-2.5 px-2 sm:px-5 py-2.5;
+}
+
+.conversation-loading-kicker {
+  @apply text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8f8577];
+}
+
+.conversation-loading-card {
+  @apply block max-w-[min(72ch,100%)] rounded-[26px] border border-[#ece5d8] bg-white/90 px-4 py-4 shadow-[0_10px_26px_-22px_rgba(31,41,55,0.55)];
+  position: relative;
+  overflow: hidden;
+}
+
+.conversation-loading-card-user {
+  @apply ml-auto bg-[#e9e3d7];
+}
+
+.conversation-loading-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.7) 50%, rgba(255,255,255,0) 100%);
+  transform: translateX(-100%);
+  animation: conversation-skeleton-sweep 1.25s ease-in-out infinite;
+}
+
+.conversation-loading-line {
+  @apply block h-3 rounded-full bg-[#efe7da];
+}
+
+.conversation-loading-line + .conversation-loading-line {
+  @apply mt-2;
+}
+
+.conversation-loading-line-wide {
+  width: 92%;
+}
+
+.conversation-loading-line-medium {
+  width: 72%;
+}
+
+.conversation-loading-line-short {
+  width: 48%;
 }
 
 .conversation-empty {
-  @apply m-0 px-2 sm:px-6 text-sm text-slate-500;
+  @apply m-0 px-2 sm:px-5 py-2.5 text-sm text-[#8f8577];
 }
 
 .conversation-inline-loading {
-  @apply sticky top-0 z-10 mx-2 sm:mx-6 mb-2 mt-2 flex items-center gap-3 rounded-full border border-slate-200/70 bg-white/90 px-3 py-2 text-xs text-slate-500 shadow-sm backdrop-blur;
+  @apply sticky top-0 z-10 mx-2 sm:mx-5 mb-1.5 mt-1.5 flex items-center gap-2.5 rounded-full border border-[#ddd5c7] bg-[#fffcf7]/94 px-3 py-1.5 text-xs text-[#7b7062] shadow-sm backdrop-blur;
 }
 
 .conversation-inline-loading-bar {
-  @apply block h-1.5 w-16 overflow-hidden rounded-full bg-slate-200;
+  @apply block h-1.5 w-20 overflow-hidden rounded-full bg-[#ece4d6];
   position: relative;
 }
 
@@ -1694,7 +1780,7 @@ onBeforeUnmount(() => {
   inset: 0;
   width: 42%;
   border-radius: 9999px;
-  background: linear-gradient(90deg, rgba(37, 99, 235, 0.2) 0%, rgba(37, 99, 235, 0.95) 100%);
+  background: linear-gradient(90deg, rgba(15, 118, 110, 0.15) 0%, rgba(15, 118, 110, 0.95) 100%);
   animation: conversation-loading-slide 1.1s ease-in-out infinite;
 }
 
@@ -1703,15 +1789,17 @@ onBeforeUnmount(() => {
 }
 
 .conversation-list {
-  @apply h-full min-h-0 list-none m-0 px-2 sm:px-6 py-0 overflow-y-auto overflow-x-visible flex flex-col gap-2 sm:gap-3;
+  @apply h-full min-h-0 list-none m-0 px-2 sm:px-5 py-0 overflow-y-auto overflow-x-visible flex flex-col gap-2.5 sm:gap-3;
+  padding-bottom: max(0.875rem, env(safe-area-inset-bottom));
 }
 
 .conversation-jump-to-latest {
-  @apply absolute bottom-4 right-4 z-20 inline-flex items-center gap-2 rounded-full border border-slate-300/80 bg-white/95 px-3 py-2 text-xs font-medium text-slate-700 shadow-lg shadow-slate-900/10 backdrop-blur transition hover:-translate-y-0.5 hover:border-slate-400 hover:text-slate-900;
+  @apply absolute bottom-4 right-4 z-20 inline-flex items-center gap-2 rounded-full border border-[#d8cfbf] bg-[#fffdf8]/96 px-3 py-2 text-xs font-semibold text-[#544a3d] shadow-lg shadow-[#1f2937]/10 backdrop-blur transition hover:-translate-y-0.5 hover:border-[#bca98d] hover:text-[#1f2937];
+  bottom: max(1rem, calc(env(safe-area-inset-bottom) + 0.5rem));
 }
 
 .conversation-jump-to-latest.has-pending-updates {
-  @apply border-blue-300 bg-blue-50/95 text-blue-700;
+  @apply border-[#b8ddd6] bg-[#eef8f5]/95 text-[#0f766e];
 }
 
 .conversation-jump-to-latest-icon {
@@ -1734,6 +1822,16 @@ onBeforeUnmount(() => {
 
   100% {
     transform: translateX(220%);
+  }
+}
+
+@keyframes conversation-skeleton-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
   }
 }
 
@@ -1767,23 +1865,23 @@ onBeforeUnmount(() => {
 }
 
 .message-stack {
-  @apply flex flex-col w-full;
+  @apply flex flex-col w-full gap-0.5;
 }
 
 .request-card {
-  @apply w-full max-w-180 rounded-xl border border-amber-300 bg-amber-50 px-3 sm:px-4 py-2 sm:py-3 flex flex-col gap-2;
+  @apply w-full max-w-180 rounded-[22px] border border-[#ead9b5] bg-[#fff7e7] px-3 sm:px-3.5 py-2.5 sm:py-3 flex flex-col gap-1.5 shadow-[0_10px_26px_-22px_rgba(194,65,12,0.35)];
 }
 
 .request-title {
-  @apply m-0 text-sm leading-5 font-semibold text-amber-900;
+  @apply m-0 text-sm leading-5 font-semibold text-[#8a4a0d];
 }
 
 .request-meta {
-  @apply m-0 text-xs leading-4 text-amber-700;
+  @apply m-0 text-xs leading-4 text-[#ad6b28];
 }
 
 .request-reason {
-  @apply m-0 text-sm leading-5 text-amber-900 whitespace-pre-wrap;
+  @apply m-0 text-sm leading-5 text-[#6a3a0b] whitespace-pre-wrap;
 }
 
 .request-actions {
@@ -1791,15 +1889,15 @@ onBeforeUnmount(() => {
 }
 
 .request-button {
-  @apply rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs text-amber-900 hover:bg-amber-100 transition;
+  @apply rounded-xl border border-[#e2c486] bg-white px-3 py-1.5 text-xs text-[#7d4911] hover:bg-[#fff0c9] transition;
 }
 
 .request-button-primary {
-  @apply border-amber-500 bg-amber-500 text-white hover:bg-amber-600;
+  @apply border-[#c56a12] bg-[#c56a12] text-white hover:bg-[#ab5b0f];
 }
 
 .request-user-input {
-  @apply flex flex-col gap-3;
+  @apply flex flex-col gap-2.5;
 }
 
 .request-question {
@@ -1815,23 +1913,23 @@ onBeforeUnmount(() => {
 }
 
 .request-select {
-  @apply h-8 rounded-md border border-amber-300 bg-white px-2 text-sm text-amber-900;
+  @apply h-8 rounded-xl border border-[#e2c486] bg-white px-2 text-sm text-[#7d4911];
 }
 
 .request-input {
-  @apply h-8 rounded-md border border-amber-300 bg-white px-2 text-sm text-amber-900 placeholder:text-amber-500;
+  @apply h-8 rounded-xl border border-[#e2c486] bg-white px-2 text-sm text-[#7d4911] placeholder:text-[#c28a4a];
 }
 
 .live-overlay-inline {
-  @apply w-full max-w-180 px-0 py-1 flex flex-col gap-1;
+  @apply w-full max-w-180 rounded-[24px] border border-[#cfe6e0] bg-[#f4fbf9] px-3.5 py-2.5 flex flex-col gap-1.5 shadow-[0_10px_26px_-22px_rgba(15,118,110,0.45)];
 }
 
 .live-overlay-label {
-  @apply m-0 text-sm leading-5 font-medium text-zinc-600;
+  @apply m-0 text-[11px] uppercase tracking-[0.16em] font-semibold text-[#0f766e];
 }
 
 .live-overlay-reasoning {
-  @apply m-0 text-sm leading-5 text-zinc-500 whitespace-pre-wrap;
+  @apply m-0 text-sm leading-5 text-[#33564f] whitespace-pre-wrap;
   display: block;
   max-height: calc(1.25rem * 5);
   overflow: auto;
@@ -1845,7 +1943,7 @@ onBeforeUnmount(() => {
 }
 
 .live-overlay-error {
-  @apply m-0 text-sm leading-5 text-rose-600 whitespace-pre-wrap;
+  @apply m-0 text-sm leading-5 text-[#c2410c] whitespace-pre-wrap;
 }
 
 .message-body {
@@ -1859,7 +1957,7 @@ onBeforeUnmount(() => {
 }
 
 .message-image-list {
-  @apply list-none m-0 mb-2 p-0 flex flex-wrap gap-2;
+  @apply list-none m-0 mb-1.5 p-0 flex flex-wrap gap-1.5;
 }
 
 .message-image-list[data-role='user'] {
@@ -1871,7 +1969,7 @@ onBeforeUnmount(() => {
 }
 
 .message-image-button {
-  @apply block rounded-xl overflow-hidden border border-slate-300 bg-white p-0 transition hover:border-slate-400;
+  @apply block rounded-2xl overflow-hidden border border-[#ddd5c7] bg-white p-0 transition hover:border-[#bca98d];
 }
 
 .message-image-preview {
@@ -1879,11 +1977,11 @@ onBeforeUnmount(() => {
 }
 
 .message-file-attachments {
-  @apply mb-2 flex flex-wrap gap-1.5;
+  @apply mb-1.5 flex flex-wrap gap-1.5;
 }
 
 .message-file-chip {
-  @apply inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-xs text-zinc-600;
+  @apply inline-flex items-center gap-1 rounded-full border border-[#ddd5c7] bg-[#f7f1e5] px-2.5 py-1 text-xs text-[#6d6354];
 }
 
 .message-file-chip-icon {
@@ -1899,15 +1997,15 @@ onBeforeUnmount(() => {
 }
 
 .message-text-flow {
-  @apply flex flex-col gap-2;
+  @apply flex flex-col gap-1.5;
 }
 
 .message-text {
-  @apply m-0 text-sm leading-relaxed whitespace-pre-wrap text-slate-800;
+  @apply m-0 text-sm leading-[1.65] whitespace-pre-wrap text-[#2b241d];
 }
 
 .message-bold-text {
-  @apply font-semibold text-slate-900;
+  @apply font-semibold text-[#1f2937];
 }
 
 .message-markdown-image {
@@ -1915,7 +2013,7 @@ onBeforeUnmount(() => {
 }
 
 .message-inline-code {
-  @apply rounded-md border border-slate-200 bg-slate-100/60 px-1.5 py-0.5 text-[0.875em] leading-[1.4] text-slate-900 font-mono;
+  @apply rounded-xl border border-[#dfd7ca] bg-[#f5f1e8] px-1.5 py-0.5 text-[0.875em] leading-[1.4] text-[#2d261f] font-mono;
 }
 
 .message-file-link {
@@ -1927,11 +2025,11 @@ onBeforeUnmount(() => {
 }
 
 .file-link-context-menu {
-  @apply fixed z-50 min-w-28 rounded-md border border-zinc-200 bg-white p-1 shadow-lg;
+  @apply fixed z-50 min-w-28 rounded-2xl border border-[#ddd5c7] bg-[#fffcf7] p-1.5 shadow-lg;
 }
 
 .file-link-context-menu-item {
-  @apply block w-full rounded px-2 py-1 text-left text-xs text-zinc-700 hover:bg-zinc-100;
+  @apply block w-full rounded-xl px-2.5 py-1.5 text-left text-xs text-[#544a3d] hover:bg-[#f1ebde];
 }
 
 .message-stack[data-role='user'] {
@@ -1943,16 +2041,35 @@ onBeforeUnmount(() => {
   @apply items-start;
 }
 
+.message-eyebrow {
+  @apply mb-0.5 px-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#8f8577];
+}
+
+.message-eyebrow[data-role='user'] {
+  @apply text-[#73695d];
+}
+
+.message-eyebrow[data-role='assistant'] {
+  @apply text-[#0f766e];
+}
+
+.message-eyebrow[data-role='system'] {
+  @apply text-[#8a6a11];
+}
+
 .message-card[data-role='user'] {
-  @apply rounded-2xl bg-slate-200 px-3 sm:px-4 py-2 sm:py-3 max-w-[min(560px,100%)];
+  @apply rounded-[22px] border border-[#d8cfbf] bg-[#ebe4d8] px-3 sm:px-3.5 py-2 sm:py-2.5 max-w-[min(560px,100%)] shadow-[0_10px_24px_-24px_rgba(31,41,55,0.8)];
   width: fit-content;
   margin-left: auto;
   align-self: flex-end;
 }
 
-.message-card[data-role='assistant'],
+.message-card[data-role='assistant'] {
+  @apply rounded-[24px] border border-[#ece5d8] bg-white/88 px-3.5 py-2.5 shadow-[0_10px_26px_-22px_rgba(31,41,55,0.55)];
+}
+
 .message-card[data-role='system'] {
-  @apply px-0 py-0 bg-transparent border-none rounded-none;
+  @apply rounded-[20px] border border-[#e8dfcf] bg-[#f7f2e8] px-3.5 py-2.5;
 }
 
 .conversation-item[data-message-type='worked'] .message-stack,
@@ -1966,7 +2083,7 @@ onBeforeUnmount(() => {
 }
 
 .worked-separator {
-  @apply w-full flex items-center gap-3 bg-transparent border-none cursor-pointer p-0;
+  @apply w-full flex items-center gap-2.5 bg-transparent border-none cursor-pointer p-0;
 }
 
 .worked-chevron {
@@ -1978,15 +2095,15 @@ onBeforeUnmount(() => {
 }
 
 .worked-separator-line {
-  @apply h-px bg-zinc-300/80 flex-1;
+  @apply h-px bg-[#d6ccbd] flex-1;
 }
 
 .worked-separator-text {
-  @apply m-0 text-sm leading-relaxed font-normal text-slate-800;
+  @apply m-0 text-sm leading-5 font-medium text-[#5b5146];
 }
 
 .worked-details {
-  @apply flex flex-col gap-1.5 pt-2;
+  @apply flex flex-col gap-1.5 pt-1.5;
 }
 
 .worked-cmd-item {
@@ -2002,7 +2119,7 @@ onBeforeUnmount(() => {
 }
 
 .image-modal-close {
-  @apply absolute top-2 right-2 z-10 w-10 h-10 rounded-full bg-white/90 text-slate-900 border border-slate-300 flex items-center justify-center;
+  @apply absolute top-2 right-2 z-10 w-10 h-10 rounded-full bg-white/90 text-slate-900 border border-[#ddd5c7] flex items-center justify-center;
 }
 
 .image-modal-image {
@@ -2018,11 +2135,11 @@ onBeforeUnmount(() => {
 }
 
 .message-actions {
-  @apply mt-1 inline-flex items-center gap-1 self-start;
+  @apply mt-0.5 inline-flex items-center gap-1 self-start;
 }
 
 .message-action-button {
-  @apply opacity-0 inline-flex items-center gap-1 self-start rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 hover:border-zinc-300;
+  @apply opacity-0 inline-flex items-center gap-1 self-start rounded-full border border-[#ddd5c7] bg-[#fffcf7] px-2.5 py-1 text-xs text-[#7b7062] transition hover:bg-[#f1ebde] hover:text-[#544a3d] hover:border-[#cdbfa9];
 }
 
 .message-action-icon {
@@ -2034,7 +2151,7 @@ onBeforeUnmount(() => {
 }
 
 .cmd-row {
-  @apply w-full flex items-center gap-2 px-3 py-1.5 rounded-lg border border-zinc-200 bg-zinc-50 cursor-pointer transition text-left hover:bg-zinc-100;
+  @apply w-full flex items-center gap-1.5 px-2.5 py-1.5 rounded-[16px] border border-[#ddd5c7] bg-[#f8f4ec] cursor-pointer transition text-left hover:bg-[#f1ebde];
   overflow-x: auto;
   overflow-y: hidden;
   white-space: nowrap;
@@ -2047,7 +2164,7 @@ onBeforeUnmount(() => {
 }
 
 .cmd-chevron {
-  @apply text-[10px] text-zinc-400 transition-transform duration-150 flex-shrink-0;
+  @apply text-[10px] text-[#8f8577] transition-transform duration-150 flex-shrink-0;
 }
 
 .cmd-chevron-open {
@@ -2055,7 +2172,7 @@ onBeforeUnmount(() => {
 }
 
 .cmd-label {
-  @apply text-xs font-mono text-zinc-700;
+  @apply text-xs font-mono text-[#544a3d];
   flex: 0 0 auto;
   min-width: max-content;
 }
@@ -2065,15 +2182,15 @@ onBeforeUnmount(() => {
 }
 
 .cmd-status-running .cmd-status {
-  @apply text-amber-600;
+  @apply text-[#0f766e];
 }
 
 .cmd-status-ok .cmd-status {
-  @apply text-emerald-600;
+  @apply text-[#0f766e];
 }
 
 .cmd-status-error .cmd-status {
-  @apply text-rose-600;
+  @apply text-[#c2410c];
 }
 
 .cmd-output-wrap {
@@ -2087,12 +2204,12 @@ onBeforeUnmount(() => {
 
 .cmd-output-wrap.cmd-output-visible {
   grid-template-rows: 1fr;
-  border-color: #e4e4e7;
+  border-color: #d8cfbf;
 }
 
 .cmd-output-wrap.cmd-output-collapsing {
   grid-template-rows: 1fr;
-  border-color: #e4e4e7;
+  border-color: #d8cfbf;
 }
 
 .cmd-output-inner {
@@ -2101,7 +2218,7 @@ onBeforeUnmount(() => {
 }
 
 .cmd-output {
-  @apply m-0 px-3 py-2 text-xs font-mono text-zinc-200 max-h-60 overflow-x-auto overflow-y-auto;
+  @apply m-0 px-2.5 py-2 text-xs font-mono text-zinc-200 max-h-56 overflow-x-auto overflow-y-auto;
   white-space: pre;
   word-break: normal;
   overflow-wrap: normal;

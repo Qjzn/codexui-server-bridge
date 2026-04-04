@@ -57,11 +57,11 @@ const hasRight = computed(() => hasRightDefault.value || hasRightHover.value)
 @reference "tailwindcss";
 
 .sidebar-menu-row {
-  @apply w-full min-w-0 rounded-lg px-3 py-1 text-left transition flex items-center gap-2;
+  @apply w-full min-w-0 rounded-2xl px-3 py-2 text-left transition flex items-center gap-2 border border-transparent;
 }
 
 .sidebar-menu-row-left {
-  @apply w-4 h-4 shrink-0 flex items-center justify-center text-zinc-500;
+  @apply min-w-4 h-4 shrink-0 flex items-center justify-center text-zinc-500;
 }
 
 .sidebar-menu-row-main {
@@ -74,7 +74,7 @@ const hasRight = computed(() => hasRightDefault.value || hasRightHover.value)
 
 .sidebar-menu-row-right-default,
 .sidebar-menu-row-right-hover {
-  @apply transition;
+  @apply transition duration-150;
 }
 
 .sidebar-menu-row[data-has-right='true'] .sidebar-menu-row-right-hover {

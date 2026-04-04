@@ -1,10 +1,14 @@
 <template>
   <section class="thread-tree-root">
-    <section v-if="pinnedThreads.length > 0" class="pinned-section">
+    <section v-if="runningThreads.length > 0" class="thread-section">
+      <div class="thread-section-heading">
+        <span class="thread-section-label">正在运行</span>
+        <span class="thread-section-count">{{ runningThreads.length }}</span>
+      </div>
       <ul class="thread-list">
-        <li v-for="thread in pinnedThreads" :key="thread.id" class="thread-row-item">
+        <li v-for="thread in runningThreads" :key="thread.id" class="thread-row-item">
           <SidebarMenuRow
-            class="thread-row"
+            class="thread-row thread-row-priority"
             :data-active="thread.id === selectedThreadId"
             :data-pinned="isPinned(thread.id)"
             :force-right-hover="isThreadMenuOpen(thread.id)"
@@ -13,16 +17,22 @@
           >
             <template #left>
               <span class="thread-left-stack">
-                <span v-if="thread.inProgress || thread.unread" class="thread-status-indicator" :data-state="getThreadState(thread)" />
-                <button class="thread-pin-button" type="button" title="pin" @click="togglePin(thread.id)">
+                <span class="thread-status-indicator" :data-state="getThreadState(thread)" />
+                <button class="thread-pin-button" type="button" title="置顶" @click="togglePin(thread.id)">
                   <IconTablerPin class="thread-icon" />
                 </button>
               </span>
             </template>
             <button class="thread-main-button" type="button" @click="onSelect(thread.id)">
-              <span class="thread-row-title-wrap">
-                <span class="thread-row-title">{{ thread.title }}</span>
-                <IconTablerGitFork v-if="thread.hasWorktree" class="thread-row-worktree-icon" title="Worktree thread" />
+              <span class="thread-row-content">
+                <span class="thread-row-title-wrap">
+                  <span class="thread-row-title">{{ thread.title }}</span>
+                  <IconTablerGitFork v-if="thread.hasWorktree" class="thread-row-worktree-icon" title="工作树会话" />
+                </span>
+                <span class="thread-row-meta">
+                  <span class="thread-status-pill" :data-state="getThreadState(thread)">{{ getThreadStatusLabel(thread) }}</span>
+                  <span class="thread-row-preview">{{ getThreadPreview(thread) }}</span>
+                </span>
               </span>
             </button>
             <template #right>
@@ -40,19 +50,93 @@
                 </button>
                 <div v-if="isThreadMenuOpen(thread.id)" class="thread-menu-panel" @click.stop>
                   <button class="thread-menu-item" type="button" @click="onBrowseThreadFiles(thread.id)">
-                    Browse files
+                    浏览文件
                   </button>
                   <button class="thread-menu-item" type="button" @click="onExportThread(thread.id)">
-                    Export chat
+                    导出会话
                   </button>
                   <button class="thread-menu-item" type="button" @click="onForkThread(thread.id)">
-                    Create chat fork
+                    创建分支会话
                   </button>
                   <button class="thread-menu-item" type="button" @click="openRenameThreadDialog(thread.id, thread.title)">
-                    Rename thread
+                    重命名会话
                   </button>
                   <button class="thread-menu-item thread-menu-item-danger" type="button" @click="openDeleteThreadDialog(thread.id, thread.title)">
-                    Delete thread
+                    删除会话
+                  </button>
+                </div>
+              </div>
+            </template>
+          </SidebarMenuRow>
+        </li>
+      </ul>
+    </section>
+
+    <section v-if="pinnedThreads.length > 0" class="thread-section pinned-section">
+      <div class="thread-section-heading">
+        <span class="thread-section-label">置顶</span>
+        <span class="thread-section-count">{{ pinnedThreads.length }}</span>
+      </div>
+      <ul class="thread-list">
+        <li v-for="thread in pinnedThreads" :key="thread.id" class="thread-row-item">
+          <SidebarMenuRow
+            class="thread-row"
+            :data-active="thread.id === selectedThreadId"
+            :data-pinned="isPinned(thread.id)"
+            :force-right-hover="isThreadMenuOpen(thread.id)"
+            @mouseleave="onThreadRowLeave(thread.id)"
+            @contextmenu="onThreadRowContextMenu($event, thread.id)"
+          >
+            <template #left>
+              <span class="thread-left-stack">
+                <span v-if="thread.inProgress || thread.unread" class="thread-status-indicator" :data-state="getThreadState(thread)" />
+                <button class="thread-pin-button" type="button" title="置顶" @click="togglePin(thread.id)">
+                  <IconTablerPin class="thread-icon" />
+                </button>
+              </span>
+            </template>
+            <button class="thread-main-button" type="button" @click="onSelect(thread.id)">
+              <span class="thread-row-content">
+                <span class="thread-row-title-wrap">
+                  <span class="thread-row-title">{{ thread.title }}</span>
+                  <IconTablerGitFork v-if="thread.hasWorktree" class="thread-row-worktree-icon" title="工作树会话" />
+                </span>
+                <span class="thread-row-meta">
+                  <span v-if="thread.inProgress || thread.unread" class="thread-status-pill" :data-state="getThreadState(thread)">
+                    {{ getThreadStatusLabel(thread) }}
+                  </span>
+                  <span class="thread-row-preview">{{ getThreadPreview(thread) }}</span>
+                </span>
+              </span>
+            </button>
+            <template #right>
+              <span class="thread-row-time">{{ formatRelativeThread(thread) }}</span>
+            </template>
+            <template #right-hover>
+              <div :ref="(el) => setThreadMenuWrapRef(thread.id, el)" class="thread-menu-wrap">
+                <button
+                  class="thread-menu-trigger"
+                  type="button"
+                  title="thread_menu"
+                  @click.stop="toggleThreadMenu(thread.id)"
+                >
+                  <IconTablerDots class="thread-icon" />
+                </button>
+                <div v-if="isThreadMenuOpen(thread.id)" class="thread-menu-panel" @click.stop>
+                  <button class="thread-menu-item" type="button" @click="onBrowseThreadFiles(thread.id)">
+                    浏览文件
+                  </button>
+                  <button class="thread-menu-item" type="button" @click="onExportThread(thread.id)">
+                    导出会话
+                  </button>
+                  <button class="thread-menu-item" type="button" @click="onForkThread(thread.id)">
+                    创建分支会话
+                  </button>
+                  <button class="thread-menu-item" type="button" @click="openRenameThreadDialog(thread.id, thread.title)">
+                    重命名会话
+                  </button>
+                  <button class="thread-menu-item thread-menu-item-danger" type="button" @click="openDeleteThreadDialog(thread.id, thread.title)">
+                    删除会话
                   </button>
                 </div>
               </div>
@@ -63,29 +147,32 @@
     </section>
 
     <SidebarMenuRow as="header" class="thread-tree-header-row">
-      <span class="thread-tree-header">Threads</span>
+      <span class="thread-tree-header-stack">
+        <span class="thread-tree-header">{{ isChronologicalView ? '最近会话' : '项目' }}</span>
+        <span class="thread-tree-header-subtitle">{{ isChronologicalView ? '其余会话，按最近活动排序' : '按工作区分组浏览' }}</span>
+      </span>
       <template #right>
         <div ref="organizeMenuWrapRef" class="organize-menu-wrap">
           <button
             class="organize-menu-trigger"
             type="button"
             :aria-expanded="isOrganizeMenuOpen"
-            aria-label="Organize threads"
-            title="Organize threads"
+            aria-label="整理会话"
+            title="整理会话"
             @click="toggleOrganizeMenu"
           >
             <IconTablerDots class="thread-icon" />
           </button>
 
           <div v-if="isOrganizeMenuOpen" class="organize-menu-panel" @click.stop>
-            <p class="organize-menu-title">Organize</p>
+            <p class="organize-menu-title">整理方式</p>
             <button
               class="organize-menu-item"
               :data-active="threadViewMode === 'project'"
               type="button"
               @click="setThreadViewMode('project')"
             >
-              <span>By project</span>
+              <span>按项目</span>
               <span v-if="threadViewMode === 'project'">✓</span>
             </button>
             <button
@@ -94,7 +181,7 @@
               type="button"
               @click="setThreadViewMode('chronological')"
             >
-              <span>Chronological list</span>
+              <span>按时间</span>
               <span v-if="threadViewMode === 'chronological'">✓</span>
             </button>
           </div>
@@ -102,9 +189,11 @@
       </template>
     </SidebarMenuRow>
 
-    <p v-if="isSearchActive && filteredGroups.length === 0" class="thread-tree-no-results">No matching threads</p>
+    <p v-if="isSearchActive && filteredGroups.length === 0" class="thread-tree-no-results">没有匹配的会话</p>
 
-    <p v-else-if="isLoading && groups.length === 0" class="thread-tree-loading">Loading threads...</p>
+    <div v-else-if="isLoading && groups.length === 0" class="thread-tree-loading" aria-hidden="true">
+      <span v-for="index in 5" :key="`thread-skeleton-${index}`" class="thread-loading-skeleton" />
+    </div>
 
     <ul v-else-if="isChronologicalView" class="thread-list thread-list-global">
       <li v-for="thread in globalThreads" :key="thread.id" class="thread-row-item">
@@ -123,15 +212,23 @@
                 class="thread-status-indicator"
                 :data-state="getThreadState(thread)"
               />
-              <button class="thread-pin-button" type="button" title="pin" @click="togglePin(thread.id)">
+              <button class="thread-pin-button" type="button" title="置顶" @click="togglePin(thread.id)">
                 <IconTablerPin class="thread-icon" />
               </button>
             </span>
           </template>
           <button class="thread-main-button" type="button" @click="onSelect(thread.id)">
-            <span class="thread-row-title-wrap">
-              <span class="thread-row-title">{{ thread.title }}</span>
-              <IconTablerGitFork v-if="thread.hasWorktree" class="thread-row-worktree-icon" title="Worktree thread" />
+            <span class="thread-row-content">
+              <span class="thread-row-title-wrap">
+                <span class="thread-row-title">{{ thread.title }}</span>
+                <IconTablerGitFork v-if="thread.hasWorktree" class="thread-row-worktree-icon" title="工作树会话" />
+              </span>
+              <span class="thread-row-meta">
+                <span v-if="thread.inProgress || thread.unread" class="thread-status-pill" :data-state="getThreadState(thread)">
+                  {{ getThreadStatusLabel(thread) }}
+                </span>
+                <span class="thread-row-preview">{{ getThreadPreview(thread) }}</span>
+              </span>
             </span>
           </button>
           <template #right>
@@ -149,19 +246,19 @@
               </button>
               <div v-if="isThreadMenuOpen(thread.id)" class="thread-menu-panel" @click.stop>
                 <button class="thread-menu-item" type="button" @click="onBrowseThreadFiles(thread.id)">
-                  Browse files
+                  浏览文件
                 </button>
                 <button class="thread-menu-item" type="button" @click="onExportThread(thread.id)">
-                  Export chat
+                  导出会话
                 </button>
                 <button class="thread-menu-item" type="button" @click="onForkThread(thread.id)">
-                  Create chat fork
+                  创建分支会话
                 </button>
                 <button class="thread-menu-item" type="button" @click="openRenameThreadDialog(thread.id, thread.title)">
-                  Rename thread
+                  重命名会话
                 </button>
                 <button class="thread-menu-item thread-menu-item-danger" type="button" @click="openDeleteThreadDialog(thread.id, thread.title)">
-                  Delete thread
+                  删除会话
                 </button>
               </div>
             </div>
@@ -208,7 +305,10 @@
               :data-dragging-handle="isDraggingProject(group.projectName)"
               @mousedown.left="onProjectHandleMouseDown($event, group.projectName)"
             >
-              <span class="project-title">{{ getProjectDisplayName(group.projectName) }}</span>
+              <span class="project-title-wrap">
+                <span class="project-title">{{ getProjectDisplayName(group.projectName) }}</span>
+                <span class="project-summary">{{ getProjectSummary(group) }}</span>
+              </span>
             </span>
             <template #right>
               <div class="project-hover-controls">
@@ -225,18 +325,18 @@
                   <div v-if="isProjectMenuOpen(group.projectName)" class="project-menu-panel" @click.stop>
                     <template v-if="projectMenuMode === 'actions'">
                       <button class="project-menu-item" type="button" @click="openRenameProjectMenu(group.projectName)">
-                        Edit name
+                        修改名称
                       </button>
                       <button
                         class="project-menu-item project-menu-item-danger"
                         type="button"
                         @click="onRemoveProject(group.projectName)"
                       >
-                        Remove
+                        移除
                       </button>
                     </template>
                     <template v-else>
-                      <label class="project-menu-label">Project name</label>
+                      <label class="project-menu-label">项目名称</label>
                       <input
                         v-model="projectRenameDraft"
                         class="project-menu-input"
@@ -283,9 +383,17 @@
                   </span>
                 </template>
                 <button class="thread-main-button" type="button" @click="onSelect(thread.id)">
-                  <span class="thread-row-title-wrap">
-                    <span class="thread-row-title">{{ thread.title }}</span>
-                    <IconTablerGitFork v-if="thread.hasWorktree" class="thread-row-worktree-icon" title="Worktree thread" />
+                  <span class="thread-row-content">
+                    <span class="thread-row-title-wrap">
+                      <span class="thread-row-title">{{ thread.title }}</span>
+                      <IconTablerGitFork v-if="thread.hasWorktree" class="thread-row-worktree-icon" title="工作树会话" />
+                    </span>
+                    <span class="thread-row-meta">
+                      <span v-if="thread.inProgress || thread.unread" class="thread-status-pill" :data-state="getThreadState(thread)">
+                        {{ getThreadStatusLabel(thread) }}
+                      </span>
+                      <span class="thread-row-preview">{{ getThreadPreview(thread) }}</span>
+                    </span>
                   </span>
                 </button>
                 <template #right>
@@ -303,19 +411,19 @@
                     </button>
                     <div v-if="isThreadMenuOpen(thread.id)" class="thread-menu-panel" @click.stop>
                       <button class="thread-menu-item" type="button" @click="onBrowseThreadFiles(thread.id)">
-                        Browse files
+                        浏览文件
                       </button>
                       <button class="thread-menu-item" type="button" @click="onExportThread(thread.id)">
-                        Export chat
+                        导出会话
                       </button>
                       <button class="thread-menu-item" type="button" @click="onForkThread(thread.id)">
-                        Create chat fork
+                        创建分支会话
                       </button>
                       <button class="thread-menu-item" type="button" @click="openRenameThreadDialog(thread.id, thread.title)">
-                        Rename thread
+                        重命名会话
                       </button>
                       <button class="thread-menu-item thread-menu-item-danger" type="button" @click="openDeleteThreadDialog(thread.id, thread.title)">
-                        Delete thread
+                        删除会话
                       </button>
                     </div>
                   </div>
@@ -328,7 +436,7 @@
             <template #left>
               <span class="project-empty-spacer" />
             </template>
-            <span class="project-empty">No threads</span>
+            <span class="project-empty">暂无会话</span>
           </SidebarMenuRow>
 
           <SidebarMenuRow v-if="hasHiddenThreads(group)" class="thread-show-more-row">
@@ -336,7 +444,7 @@
               <span class="thread-show-more-spacer" />
             </template>
             <button class="thread-show-more-button" type="button" @click="toggleProjectExpansion(group.projectName)">
-              {{ isExpanded(group.projectName) ? 'Show less' : 'Show more' }}
+              {{ isExpanded(group.projectName) ? '收起' : '展开更多' }}
             </button>
           </SidebarMenuRow>
       </article>
@@ -345,20 +453,20 @@
     <Teleport to="body">
       <div v-if="renameThreadDialogVisible" class="rename-thread-overlay" @click.self="closeRenameThreadDialog">
         <div class="rename-thread-panel" role="dialog" aria-modal="true" aria-label="Thread title">
-          <h3 class="rename-thread-title">Rename thread</h3>
-          <p class="rename-thread-subtitle">Make it short and recognizable.</p>
+          <h3 class="rename-thread-title">重命名会话</h3>
+          <p class="rename-thread-subtitle">建议简短、容易识别。</p>
           <input
             ref="renameThreadInputRef"
             v-model="renameThreadDraft"
             class="rename-thread-input"
             type="text"
-            placeholder="Add title..."
+            placeholder="输入会话标题..."
             @keydown.enter.prevent="submitRenameThread"
             @keydown.esc.prevent="closeRenameThreadDialog"
           />
           <div class="rename-thread-actions">
-            <button class="rename-thread-button" type="button" @click="closeRenameThreadDialog">Cancel</button>
-            <button class="rename-thread-button rename-thread-button-primary" type="button" @click="submitRenameThread">Save</button>
+            <button class="rename-thread-button" type="button" @click="closeRenameThreadDialog">取消</button>
+            <button class="rename-thread-button rename-thread-button-primary" type="button" @click="submitRenameThread">保存</button>
           </div>
         </div>
       </div>
@@ -366,14 +474,14 @@
 
     <Teleport to="body">
       <div v-if="deleteThreadDialogVisible" class="rename-thread-overlay" @click.self="closeDeleteThreadDialog">
-        <div class="rename-thread-panel" role="dialog" aria-modal="true" aria-label="Delete thread">
-          <h3 class="rename-thread-title">Delete thread?</h3>
+        <div class="rename-thread-panel" role="dialog" aria-modal="true" aria-label="删除会话">
+          <h3 class="rename-thread-title">删除会话？</h3>
           <p class="rename-thread-subtitle">
-            This will archive the thread "{{ deleteThreadTitle }}". You can find it later in archived threads.
+            这会把会话“{{ deleteThreadTitle }}”移到归档中，之后仍可在归档列表中找到。
           </p>
           <div class="rename-thread-actions">
-            <button class="rename-thread-button" type="button" @click="closeDeleteThreadDialog">Cancel</button>
-            <button class="rename-thread-button rename-thread-button-danger" type="button" @click="submitDeleteThread">Delete</button>
+            <button class="rename-thread-button" type="button" @click="closeDeleteThreadDialog">取消</button>
+            <button class="rename-thread-button rename-thread-button-danger" type="button" @click="submitDeleteThread">删除</button>
           </div>
         </div>
       </div>
@@ -563,7 +671,7 @@ const globalThreads = computed<UiThread[]>(() => {
 
   for (const group of sourceGroups) {
     for (const thread of group.threads) {
-      if (pinnedThreadIdSet.value.has(thread.id)) continue
+      if (prioritizedThreadIdSet.value.has(thread.id)) continue
       rows.push(thread)
     }
   }
@@ -598,7 +706,7 @@ const threadProjectNameById = computed(() => {
 const unpinnedThreadsByProjectName = computed(() => {
   const map = new Map<string, UiThread[]>()
   for (const group of props.groups) {
-    const rows = group.threads.filter((thread) => !pinnedThreadIdSet.value.has(thread.id))
+    const rows = group.threads.filter((thread) => !prioritizedThreadIdSet.value.has(thread.id))
     map.set(group.projectName, rows)
   }
   return map
@@ -620,6 +728,20 @@ const pinnedThreads = computed(() =>
     .filter((thread): thread is UiThread => thread !== null)
     .filter(threadMatchesSearch),
 )
+const runningThreads = computed<UiThread[]>(() =>
+  filteredGroups.value
+    .flatMap((group) => group.threads)
+    .filter((thread) => thread.inProgress && !pinnedThreadIdSet.value.has(thread.id))
+    .sort((first, second) => {
+      const firstTimestamp = new Date(first.updatedAtIso || first.createdAtIso).getTime()
+      const secondTimestamp = new Date(second.updatedAtIso || second.createdAtIso).getTime()
+      return secondTimestamp - firstTimestamp
+    }),
+)
+const prioritizedThreadIdSet = computed(() => new Set([
+  ...pinnedThreadIds.value,
+  ...runningThreads.value.map((thread) => thread.id),
+]))
 
 const projectedDropProjectIndex = computed<number | null>(() => {
   const drag = activeProjectDrag.value
@@ -697,6 +819,31 @@ function formatRelativeThread(thread: UiThread): string {
   return formatRelative(new Date(thread.updatedAtIso || thread.createdAtIso).getTime())
 }
 
+function getThreadPreview(thread: UiThread): string {
+  const preview = thread.preview.trim()
+  if (preview.length > 0) return preview
+
+  const normalizedCwd = thread.cwd.trim().replace(/\\/gu, '/')
+  if (!normalizedCwd) return getProjectDisplayName(thread.projectName)
+  return normalizedCwd.split('/').filter(Boolean).pop() || normalizedCwd
+}
+
+function getThreadStatusLabel(thread: UiThread): string {
+  if (thread.inProgress) return '执行中'
+  if (thread.unread) return '未读'
+  return thread.hasWorktree ? '工作树' : '就绪'
+}
+
+function getProjectSummary(group: UiProjectGroup): string {
+  const total = group.threads.length
+  const running = group.threads.filter((thread) => thread.inProgress).length
+  const threadLabel = '个会话'
+  if (running > 0) {
+    return `${total}${threadLabel} · ${running} 个运行中`
+  }
+  return `${total}${threadLabel}`
+}
+
 function isPinned(threadId: string): boolean {
   return pinnedThreadIdSet.value.has(threadId)
 }
@@ -725,7 +872,7 @@ function onForkThread(threadId: string): void {
 }
 
 function getNewThreadButtonAriaLabel(projectName: string): string {
-  return `start new thread ${getProjectDisplayName(projectName)}`
+  return `在 ${getProjectDisplayName(projectName)} 中新建会话`
 }
 
 function onStartNewThread(projectName: string): void {
@@ -1300,6 +1447,9 @@ function projectGroupStyle(projectName: string): Record<string, string> | undefi
 }
 
 function projectThreads(group: UiProjectGroup): UiThread[] {
+  if (isSearchActive.value) {
+    return group.threads.filter((thread) => !prioritizedThreadIdSet.value.has(thread.id))
+  }
   return unpinnedThreadsByProjectName.value.get(group.projectName) ?? []
 }
 
@@ -1371,19 +1521,43 @@ onBeforeUnmount(() => {
 @reference "tailwindcss";
 
 .thread-tree-root {
-  @apply flex flex-col;
+  @apply flex flex-col gap-2;
+}
+
+.thread-section {
+  @apply flex flex-col gap-2;
 }
 
 .pinned-section {
   @apply mb-1;
 }
 
+.thread-section-heading {
+  @apply px-3 flex items-center justify-between gap-3;
+}
+
+.thread-section-label {
+  @apply text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7a705f];
+}
+
+.thread-section-count {
+  @apply inline-flex min-w-5 items-center justify-center rounded-full bg-[#e7decd] px-1.5 py-0.5 text-[11px] font-semibold text-[#6d6354];
+}
+
 .thread-tree-header-row {
-  @apply cursor-default;
+  @apply cursor-default mt-1;
+}
+
+.thread-tree-header-stack {
+  @apply flex min-w-0 flex-col gap-0.5;
 }
 
 .thread-tree-header {
-  @apply text-sm font-normal text-zinc-500 select-none;
+  @apply text-sm font-semibold text-[#433b31] select-none;
+}
+
+.thread-tree-header-subtitle {
+  @apply text-[11px] text-[#8f8577] select-none;
 }
 
 .organize-menu-wrap {
@@ -1391,35 +1565,50 @@ onBeforeUnmount(() => {
 }
 
 .organize-menu-trigger {
-  @apply h-5 w-5 rounded text-zinc-500 flex items-center justify-center transition hover:bg-zinc-200 hover:text-zinc-700;
+  @apply h-7 w-7 rounded-xl text-[#73695d] flex items-center justify-center transition hover:bg-[#ece4d6] hover:text-[#433b31];
 }
 
 .organize-menu-panel {
-  @apply absolute right-0 top-full mt-1 z-30 min-w-44 rounded-xl border border-zinc-200 bg-white/95 p-1.5 shadow-lg backdrop-blur-sm;
+  @apply absolute right-0 top-full mt-2 z-30 min-w-48 rounded-2xl border border-[#ddd5c7] bg-[#fffcf7]/96 p-1.5 shadow-xl shadow-[#1f2937]/10 backdrop-blur-sm;
 }
 
 .organize-menu-title {
-  @apply px-2 py-1 text-xs text-zinc-500;
+  @apply px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-[#9a907f];
 }
 
 .organize-menu-item {
-  @apply w-full rounded-lg px-2 py-1.5 text-sm text-zinc-700 flex items-center justify-between hover:bg-zinc-100;
+  @apply w-full rounded-xl px-2.5 py-2 text-sm text-[#544a3d] flex items-center justify-between hover:bg-[#f1ebde];
 }
 
 .organize-menu-item[data-active='true'] {
-  @apply bg-zinc-100 text-zinc-900;
+  @apply bg-[#ece4d6] text-[#1f2937];
 }
 
 .thread-start-button {
-  @apply h-5 w-5 rounded text-zinc-500 flex items-center justify-center transition hover:bg-zinc-200 hover:text-zinc-700;
+  @apply h-7 w-7 rounded-xl text-[#73695d] flex items-center justify-center transition hover:bg-[#ece4d6] hover:text-[#433b31];
 }
 
 .thread-tree-loading {
-  @apply px-3 py-2 text-sm text-zinc-500;
+  @apply px-3 py-1.5 flex flex-col gap-2;
+}
+
+.thread-loading-skeleton {
+  @apply block h-16 rounded-2xl border border-[#ece4d6] bg-[#f7f2e8];
+  position: relative;
+  overflow: hidden;
+}
+
+.thread-loading-skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.65) 50%, rgba(255,255,255,0) 100%);
+  transform: translateX(-100%);
+  animation: thread-skeleton-sweep 1.2s ease-in-out infinite;
 }
 
 .thread-tree-no-results {
-  @apply px-3 py-2 text-sm text-zinc-400;
+  @apply px-3 py-3 text-sm text-[#938878];
 }
 
 .thread-tree-groups {
@@ -1427,15 +1616,16 @@ onBeforeUnmount(() => {
 }
 
 .project-group {
-  @apply m-0 transition-shadow;
+  @apply m-0 rounded-[22px] border border-transparent transition-[border-color,box-shadow,background-color];
+  background: linear-gradient(180deg, rgba(255,252,247,0.72) 0%, rgba(246,240,229,0.82) 100%);
 }
 
 .project-group[data-dragging='true'] {
-  @apply shadow-lg;
+  @apply shadow-lg shadow-[#1f2937]/10 border-[#ddd5c7];
 }
 
 .project-header-row {
-  @apply hover:bg-zinc-200 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400;
+  @apply hover:bg-[#ece4d6] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b8a98d];
 }
 
 .project-main-button {
@@ -1447,7 +1637,7 @@ onBeforeUnmount(() => {
 }
 
 .project-icon-stack {
-  @apply relative w-4 h-4 flex items-center justify-center text-zinc-500;
+  @apply relative w-4 h-4 flex items-center justify-center text-[#73695d];
 }
 
 .project-icon-folder {
@@ -1459,7 +1649,15 @@ onBeforeUnmount(() => {
 }
 
 .project-title {
-  @apply text-sm font-normal text-zinc-700 truncate select-none;
+  @apply text-sm font-semibold text-[#433b31] truncate select-none;
+}
+
+.project-title-wrap {
+  @apply min-w-0 flex flex-col;
+}
+
+.project-summary {
+  @apply text-[11px] text-[#8c8171] truncate;
 }
 
 .project-menu-wrap {
@@ -1471,15 +1669,15 @@ onBeforeUnmount(() => {
 }
 
 .project-menu-trigger {
-  @apply h-4 w-4 rounded p-0 text-zinc-600 flex items-center justify-center;
+  @apply h-6 w-6 rounded-lg p-0 text-[#73695d] flex items-center justify-center hover:bg-[#ece4d6];
 }
 
 .project-menu-panel {
-  @apply absolute right-0 top-full mt-1 z-20 min-w-36 rounded-md border border-zinc-200 bg-white p-1 shadow-md flex flex-col gap-0.5;
+  @apply absolute right-0 top-full mt-2 z-20 min-w-40 rounded-2xl border border-[#ddd5c7] bg-[#fffcf7] p-1.5 shadow-lg flex flex-col gap-0.5;
 }
 
 .project-menu-item {
-  @apply rounded px-2 py-1 text-left text-sm text-zinc-700 hover:bg-zinc-100;
+  @apply rounded-xl px-2.5 py-1.5 text-left text-sm text-[#544a3d] hover:bg-[#f1ebde];
 }
 
 .project-menu-item-danger {
@@ -1487,11 +1685,11 @@ onBeforeUnmount(() => {
 }
 
 .project-menu-label {
-  @apply px-2 pt-1 text-xs text-zinc-500;
+  @apply px-2 pt-1 text-[11px] uppercase tracking-[0.14em] text-[#948a7b];
 }
 
 .project-menu-input {
-  @apply px-2 py-1 text-sm text-zinc-800 bg-transparent border-none outline-none;
+  @apply px-2 py-1 text-sm text-[#2b241d] bg-transparent border-none outline-none;
 }
 
 .project-empty-row {
@@ -1503,11 +1701,11 @@ onBeforeUnmount(() => {
 }
 
 .project-empty {
-  @apply text-sm text-zinc-400;
+  @apply text-sm text-[#998e7e];
 }
 
 .thread-list {
-  @apply list-none m-0 p-0 flex flex-col gap-0.5;
+  @apply list-none m-0 p-0 flex flex-col gap-1;
 }
 
 .thread-list-global {
@@ -1523,7 +1721,11 @@ onBeforeUnmount(() => {
 }
 
 .thread-row {
-  @apply hover:bg-zinc-200;
+  @apply hover:bg-[#ece4d6] border border-transparent;
+}
+
+.thread-row-priority {
+  @apply border-[#d8ccba] bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(245,240,230,0.98)_100%)];
 }
 
 .thread-left-stack {
@@ -1531,31 +1733,47 @@ onBeforeUnmount(() => {
 }
 
 .thread-pin-button {
-  @apply absolute inset-0 w-4 h-4 rounded text-zinc-500 opacity-0 pointer-events-none transition flex items-center justify-center;
+  @apply absolute inset-0 w-4 h-4 rounded text-[#6e6458] opacity-0 pointer-events-none transition flex items-center justify-center;
 }
 
 .thread-main-button {
   @apply min-w-0 w-full text-left rounded px-0 py-0 flex items-center min-h-5;
 }
 
+.thread-row-content {
+  @apply min-w-0 flex flex-col gap-0.5;
+}
+
 .thread-row-title-wrap {
-  @apply min-w-0 inline-flex items-center gap-1;
+  @apply min-w-0 inline-flex items-center gap-1.5;
 }
 
 .thread-row-title {
-  @apply block text-sm leading-5 font-normal text-zinc-800 truncate whitespace-nowrap;
+  @apply block text-sm leading-5 font-medium text-[#2d261f] truncate whitespace-nowrap;
 }
 
 .thread-row-worktree-icon {
-  @apply w-3 h-3 text-zinc-500 shrink-0;
+  @apply w-3.5 h-3.5 text-[#807565] shrink-0;
 }
 
 .thread-status-indicator {
   @apply w-2.5 h-2.5 rounded-full;
 }
 
+.thread-row-meta {
+  @apply min-w-0 flex items-center gap-1.5;
+}
+
+.thread-row-preview {
+  @apply min-w-0 truncate text-[11px] leading-4 text-[#8f8577];
+}
+
+.thread-status-pill {
+  @apply inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em];
+}
+
 .thread-row-time {
-  @apply block text-sm font-normal text-zinc-500;
+  @apply block text-[11px] font-medium text-[#7a705f];
 }
 
 .thread-menu-wrap {
@@ -1563,15 +1781,15 @@ onBeforeUnmount(() => {
 }
 
 .thread-menu-trigger {
-  @apply h-4 w-4 rounded p-0 text-xs text-zinc-600 flex items-center justify-center;
+  @apply h-6 w-6 rounded-lg p-0 text-xs text-[#73695d] flex items-center justify-center hover:bg-[#ece4d6];
 }
 
 .thread-menu-panel {
-  @apply absolute right-0 top-full mt-1 z-20 min-w-36 rounded-md border border-zinc-200 bg-white p-1 shadow-md flex flex-col gap-0.5;
+  @apply absolute right-0 top-full mt-2 z-20 min-w-40 rounded-2xl border border-[#ddd5c7] bg-[#fffcf7] p-1.5 shadow-lg flex flex-col gap-0.5;
 }
 
 .thread-menu-item {
-  @apply rounded px-2 py-1 text-left text-sm text-zinc-700 hover:bg-zinc-100;
+  @apply rounded-xl px-2.5 py-1.5 text-left text-sm text-[#544a3d] hover:bg-[#f1ebde];
 }
 
 .thread-menu-item-danger {
@@ -1591,7 +1809,7 @@ onBeforeUnmount(() => {
 }
 
 .thread-show-more-button {
-  @apply block mx-auto rounded-lg px-2 py-0.5 text-sm font-normal text-zinc-600 transition hover:text-zinc-800 hover:bg-zinc-200;
+  @apply block mx-auto rounded-full px-3 py-1 text-sm font-medium text-[#6f6558] transition hover:text-[#2d261f] hover:bg-[#ece4d6];
 }
 
 .project-header-row:hover .project-icon-folder {
@@ -1603,7 +1821,7 @@ onBeforeUnmount(() => {
 }
 
 .thread-row[data-active='true'] {
-  @apply bg-zinc-200;
+  @apply border-[#cfc3ae] bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(240,233,222,1)_100%)] shadow-[0_10px_24px_-18px_rgba(31,41,55,0.5)];
 }
 
 .thread-row:hover .thread-pin-button,
@@ -1614,11 +1832,23 @@ onBeforeUnmount(() => {
 .thread-status-indicator[data-state='unread'] {
   width: 6.6667px;
   height: 6.6667px;
-  @apply bg-blue-600;
+  @apply bg-[#0f766e];
 }
 
 .thread-status-indicator[data-state='working'] {
-  @apply border-2 border-zinc-500 border-t-transparent bg-transparent animate-spin;
+  @apply border-2 border-[#0f766e] border-t-transparent bg-transparent animate-spin;
+}
+
+.thread-status-pill[data-state='working'] {
+  @apply bg-[#d7efea] text-[#0f766e];
+}
+
+.thread-status-pill[data-state='unread'] {
+  @apply bg-[#efe7d7] text-[#7b5d14];
+}
+
+.thread-status-pill[data-state='idle'] {
+  @apply bg-[#ebe4d8] text-[#6d6354];
 }
 
 .thread-row:hover .thread-status-indicator[data-state='unread'],
@@ -1633,19 +1863,19 @@ onBeforeUnmount(() => {
 }
 
 .rename-thread-panel {
-  @apply w-full max-w-sm rounded-xl bg-white p-4 shadow-xl;
+  @apply w-full max-w-sm rounded-3xl border border-[#ddd5c7] bg-[#fffdf8] p-4 shadow-xl;
 }
 
 .rename-thread-title {
-  @apply m-0 text-base font-semibold text-zinc-900;
+  @apply m-0 text-base font-semibold text-[#2d261f];
 }
 
 .rename-thread-subtitle {
-  @apply mt-1 mb-3 text-sm text-zinc-500;
+  @apply mt-1 mb-3 text-sm text-[#8d8273];
 }
 
 .rename-thread-input {
-  @apply w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500;
+  @apply w-full rounded-2xl border border-[#d8cfbf] bg-white px-3 py-2 text-sm text-[#2d261f] outline-none focus:border-[#9f8d74];
 }
 
 .rename-thread-actions {
@@ -1653,14 +1883,24 @@ onBeforeUnmount(() => {
 }
 
 .rename-thread-button {
-  @apply rounded-md px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100;
+  @apply rounded-xl px-3 py-1.5 text-sm text-[#544a3d] hover:bg-[#f1ebde];
 }
 
 .rename-thread-button-primary {
-  @apply bg-zinc-900 text-white hover:bg-black;
+  @apply bg-[#1f2937] text-white hover:bg-[#111827];
 }
 
 .rename-thread-button-danger {
   @apply bg-rose-600 text-white hover:bg-rose-700;
+}
+
+@keyframes thread-skeleton-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
 }
 </style>

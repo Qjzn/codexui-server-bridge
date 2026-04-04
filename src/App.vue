@@ -15,8 +15,8 @@
               class="sidebar-search-toggle"
               type="button"
               :aria-pressed="isSidebarSearchVisible"
-              aria-label="Search threads"
-              title="Search threads"
+              aria-label="搜索会话"
+              title="搜索会话"
               @click="toggleSidebarSearch"
             >
               <IconTablerSearch class="sidebar-search-toggle-icon" />
@@ -30,14 +30,14 @@
               v-model="sidebarSearchQuery"
               class="sidebar-search-input"
               type="text"
-              placeholder="Filter threads..."
+              placeholder="筛选会话..."
               @keydown="onSidebarSearchKeydown"
             />
             <button
               v-if="sidebarSearchQuery.length > 0"
               class="sidebar-search-clear"
               type="button"
-              aria-label="Clear search"
+              aria-label="清空搜索"
               @click="clearSidebarSearch"
             >
               <IconTablerX class="sidebar-search-clear-icon" />
@@ -51,7 +51,7 @@
             type="button"
             @click="router.push({ name: 'skills' }); isMobile && setSidebarCollapsed(true)"
           >
-            Skills Hub
+            技能中心
           </button>
 
           <SidebarThreadTree :groups="projectGroups" :project-display-name-by-id="projectDisplayNameById"
@@ -72,43 +72,43 @@
           <Transition name="settings-panel">
             <div v-if="isSettingsOpen" class="sidebar-settings-panel">
               <button class="sidebar-settings-row" type="button" :title="SETTINGS_HELP.sendWithEnter" @click="toggleSendWithEnter">
-                <span class="sidebar-settings-label">Require ⌘ + enter to send</span>
+                <span class="sidebar-settings-label">发送需按 ⌘ + Enter</span>
                 <span class="sidebar-settings-toggle" :class="{ 'is-on': !sendWithEnter }" />
               </button>
               <button class="sidebar-settings-row" type="button" :title="SETTINGS_HELP.inProgressSendMode" @click="cycleInProgressSendMode">
-                <span class="sidebar-settings-label">When busy, send as</span>
-                <span class="sidebar-settings-value">{{ inProgressSendMode === 'steer' ? 'Steer' : 'Queue' }}</span>
+                <span class="sidebar-settings-label">忙碌时发送方式</span>
+                <span class="sidebar-settings-value">{{ inProgressSendMode === 'steer' ? '插话' : '排队' }}</span>
               </button>
               <button class="sidebar-settings-row" type="button" :title="SETTINGS_HELP.appearance" @click="cycleDarkMode">
-                <span class="sidebar-settings-label">Appearance</span>
-                <span class="sidebar-settings-value">{{ darkMode === 'system' ? 'System' : darkMode === 'dark' ? 'Dark' : 'Light' }}</span>
+                <span class="sidebar-settings-label">外观</span>
+                <span class="sidebar-settings-value">{{ darkMode === 'system' ? '跟随系统' : darkMode === 'dark' ? '深色' : '浅色' }}</span>
               </button>
               <button class="sidebar-settings-row" type="button" :title="SETTINGS_HELP.dictationClickToToggle" @click="toggleDictationClickToToggle">
-                <span class="sidebar-settings-label">Click to toggle dictation</span>
+                <span class="sidebar-settings-label">点击切换听写</span>
                 <span class="sidebar-settings-toggle" :class="{ 'is-on': dictationClickToToggle }" />
               </button>
               <button class="sidebar-settings-row" type="button" :title="SETTINGS_HELP.dictationAutoSend" @click="toggleDictationAutoSend">
-                <span class="sidebar-settings-label">Auto send dictation</span>
+                <span class="sidebar-settings-label">听写后自动发送</span>
                 <span class="sidebar-settings-toggle" :class="{ 'is-on': dictationAutoSend }" />
               </button>
               <button class="sidebar-settings-row" type="button" :title="SETTINGS_HELP.rollbackCommits" @click="toggleWorktreeGitAutomation">
-                <span class="sidebar-settings-label">Rollback commits</span>
+                <span class="sidebar-settings-label">回滚时提交变更</span>
                 <span class="sidebar-settings-toggle" :class="{ 'is-on': worktreeGitAutomationEnabled }" />
               </button>
               <button class="sidebar-settings-row" type="button" :title="SETTINGS_HELP.githubTrendingProjects" @click="toggleGithubTrendingProjects">
-                <span class="sidebar-settings-label">GitHub trending projects</span>
+                <span class="sidebar-settings-label">GitHub 热门项目</span>
                 <span class="sidebar-settings-toggle" :class="{ 'is-on': showGithubTrendingProjects }" />
               </button>
               <div class="sidebar-settings-row sidebar-settings-row--select" :title="SETTINGS_HELP.dictationLanguage">
-                <span class="sidebar-settings-label">Dictation language</span>
+                <span class="sidebar-settings-label">听写语言</span>
                 <ComposerDropdown
                   class="sidebar-settings-language-dropdown"
                   :model-value="dictationLanguage"
                   :options="dictationLanguageOptions"
-                  placeholder="Auto-detect"
+                  placeholder="自动识别"
                   open-direction="up"
                   :enable-search="true"
-                  search-placeholder="Search language..."
+                  search-placeholder="搜索语言..."
                   @update:model-value="onDictationLanguageChange"
                 />
               </div>
@@ -126,7 +126,7 @@
           </Transition>
           <button class="sidebar-settings-button" type="button" @click="isSettingsOpen = !isSettingsOpen">
             <IconTablerSettings class="sidebar-settings-icon" />
-            <span>Settings</span>
+            <span>设置</span>
           </button>
         </div>
       </section>
@@ -135,6 +135,9 @@
     <template #content>
       <section class="content-root">
         <ContentHeader :title="contentTitle">
+          <template #subtitle>
+            <p v-if="headerSubtitle" class="content-header-subtitle">{{ headerSubtitle }}</p>
+          </template>
           <template #leading>
             <SidebarThreadControls
               v-if="isSidebarCollapsed || isMobile"
@@ -152,11 +155,29 @@
               type="button"
               :title="desktopRefreshButtonTitle"
               :disabled="isDesktopRefreshRunning"
+              :data-busy="isSelectedThreadInProgress || liveOverlay !== null"
               @click="onRefreshDesktopApp"
             >
               <IconTablerArrowBackUp class="desktop-refresh-button-icon" />
               <span>{{ desktopRefreshButtonLabel }}</span>
             </button>
+          </template>
+          <template #meta>
+            <div class="content-status-strip" aria-live="polite">
+              <span class="content-status-pill" :data-tone="serviceStatusTone">
+                <span class="content-status-pill-label">服务</span>
+                <span>{{ serviceStatusLabel }}</span>
+              </span>
+              <span v-if="threadStatusLabel" class="content-status-pill" :data-tone="threadStatusTone">
+                <span class="content-status-pill-label">会话</span>
+                <span>{{ threadStatusLabel }}</span>
+              </span>
+              <span class="content-status-pill" :data-tone="desktopStatusTone">
+                <span class="content-status-pill-label">客户端</span>
+                <span>{{ desktopStatusLabel }}</span>
+              </span>
+              <span v-if="serviceStatusDetail" class="content-status-detail">{{ serviceStatusDetail }}</span>
+            </div>
           </template>
         </ContentHeader>
 
@@ -167,15 +188,15 @@
           <template v-else-if="isHomeRoute">
             <div class="content-grid">
               <div class="new-thread-empty">
-                <p class="new-thread-hero">Let's build</p>
+                <p class="new-thread-hero">开始任务</p>
                 <ComposerDropdown class="new-thread-folder-dropdown" :model-value="newThreadCwd"
-                  :options="newThreadFolderOptions" placeholder="Choose folder"
+                  :options="newThreadFolderOptions" placeholder="选择目录"
                   :enable-search="true"
-                  search-placeholder="Quick search project"
+                  search-placeholder="搜索项目"
                   :show-add-action="true"
-                  add-action-label="+ Add new project"
+                  add-action-label="+ 新建项目"
                   :default-add-value="defaultNewProjectName"
-                  add-placeholder="Project name or absolute path"
+                  add-placeholder="项目名或绝对路径"
                   :disabled="false" @update:model-value="onSelectNewThreadFolder"
                   @add="onAddNewProject" />
                 <ComposerRuntimeDropdown
@@ -195,7 +216,7 @@
                 </div>
                 <div v-if="showGithubTrendingProjects" class="new-thread-trending">
                   <div class="new-thread-trending-header">
-                    <p class="new-thread-trending-title">Trending GitHub projects</p>
+                    <p class="new-thread-trending-title">GitHub 热门项目</p>
                     <ComposerDropdown
                       class="new-thread-trending-scope-dropdown"
                       :model-value="githubTipsScope"
@@ -203,9 +224,9 @@
                       @update:model-value="onGithubTipsScopeChange"
                     />
                   </div>
-                  <p v-if="isTrendingProjectsLoading" class="new-thread-trending-empty">Loading trending projects...</p>
+                  <p v-if="isTrendingProjectsLoading" class="new-thread-trending-empty">正在加载热门项目...</p>
                   <p v-else-if="trendingProjects.length === 0" class="new-thread-trending-empty">
-                    Trending repos are unavailable right now.
+                    当前无法获取热门仓库。
                   </p>
                   <div v-else class="new-thread-trending-list">
                     <button
@@ -227,7 +248,7 @@
                       </span>
                       <span class="new-thread-trending-tip-meta">{{ formatTrendingTipMeta(project) }}</span>
                       <span class="new-thread-trending-tip-description">
-                        {{ project.description || 'No description available.' }}
+                        {{ project.description || '暂无描述。' }}
                       </span>
                     </button>
                   </div>
@@ -298,6 +319,37 @@
       </section>
     </template>
   </DesktopLayout>
+
+  <Teleport to="body">
+    <div
+      v-if="isDesktopRefreshConfirmVisible"
+      class="desktop-refresh-confirm-overlay"
+      @click.self="closeDesktopRefreshConfirm"
+    >
+      <div class="desktop-refresh-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="desktop-refresh-confirm-title">
+        <p class="desktop-refresh-confirm-kicker">确认刷新客户端</p>
+        <h2 id="desktop-refresh-confirm-title" class="desktop-refresh-confirm-title">
+          {{ desktopRefreshConfirmTitle }}
+        </h2>
+        <p class="desktop-refresh-confirm-text">
+          {{ desktopRefreshConfirmMessage }}
+        </p>
+        <div class="desktop-refresh-confirm-actions">
+          <button class="desktop-refresh-confirm-button" type="button" @click="closeDesktopRefreshConfirm">
+            取消
+          </button>
+          <button
+            class="desktop-refresh-confirm-button desktop-refresh-confirm-button-primary"
+            :class="{ 'desktop-refresh-confirm-button-warning': isDesktopRefreshRiskHigh }"
+            type="button"
+            @click="confirmDesktopRefresh"
+          >
+            {{ isDesktopRefreshRiskHigh ? '仍然刷新' : '刷新桌面端' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -342,14 +394,14 @@ const SIDEBAR_COLLAPSED_STORAGE_KEY = 'codex-web-local.sidebar-collapsed.v1'
 const worktreeName = import.meta.env.VITE_WORKTREE_NAME ?? 'unknown'
 const appVersion = import.meta.env.VITE_APP_VERSION ?? 'unknown'
 const SETTINGS_HELP = {
-  sendWithEnter: 'When enabled, press Enter to send. When disabled, use Command+Enter to send.',
-  inProgressSendMode: 'If a turn is still running, choose whether a new prompt should steer the current turn or be queued.',
-  appearance: 'Switch between system theme, light mode, and dark mode.',
-  dictationClickToToggle: 'Use click-to-start and click-to-stop dictation instead of hold-to-talk.',
-  dictationAutoSend: 'Automatically send transcribed dictation when recording stops.',
-  rollbackCommits: 'When enabled, each message creates a rollback Git commit. On rollback, it resets to the commit before that message.',
-  githubTrendingProjects: 'Show or hide GitHub trending project cards on the new thread screen.',
-  dictationLanguage: 'Choose transcription language or keep auto-detect.',
+  sendWithEnter: '开启后直接按 Enter 发送，关闭后使用 Command + Enter 发送。',
+  inProgressSendMode: '当前会话仍在执行时，选择新输入是插话还是排队。',
+  appearance: '在跟随系统、浅色和深色之间切换。',
+  dictationClickToToggle: '改为点击开始、点击结束听写，而不是按住说话。',
+  dictationAutoSend: '录音结束后自动发送转写内容。',
+  rollbackCommits: '开启后每条消息都会生成回滚提交，回滚时会重置到该消息之前的提交。',
+  githubTrendingProjects: '显示或隐藏新会话页里的 GitHub 热门项目卡片。',
+  dictationLanguage: '选择转写语言，或保持自动识别。',
 } as const
 const WHISPER_LANGUAGES: Record<string, string> = {
   en: 'english',
@@ -474,6 +526,8 @@ const {
   isSendingMessage,
   isInterruptingTurn,
   isUpdatingSpeedMode,
+  notificationStale,
+  error,
   refreshAll,
   refreshSkills,
   selectThread,
@@ -486,6 +540,7 @@ const {
   interruptSelectedThreadTurn,
   rollbackSelectedThread,
   isRollingBack,
+  selectedThreadExecutionActive,
   selectedThreadQueuedMessages,
   removeQueuedMessage,
   steerQueuedMessage,
@@ -565,6 +620,7 @@ const desktopAppStatus = ref<DesktopAppStatus>({
   reason: '',
 })
 const isDesktopRefreshRunning = ref(false)
+const isDesktopRefreshConfirmVisible = ref(false)
 
 const routeThreadId = computed(() => {
   const rawThreadId = route.params.threadId
@@ -584,9 +640,9 @@ const knownThreadIdSet = computed(() => {
 const isHomeRoute = computed(() => route.name === 'home')
 const isSkillsRoute = computed(() => route.name === 'skills')
 const contentTitle = computed(() => {
-  if (isSkillsRoute.value) return 'Skills'
-  if (isHomeRoute.value) return 'New thread'
-  return selectedThread.value?.title ?? 'Choose a thread'
+  if (isSkillsRoute.value) return '技能'
+  if (isHomeRoute.value) return '新会话'
+  return selectedThread.value?.title ?? '选择会话'
 })
 const browserHostName =
   typeof window !== 'undefined'
@@ -595,6 +651,30 @@ const browserHostName =
 const pageTitle = computed(() => {
   const threadTitle = selectedThread.value?.title?.trim() ?? ''
   return threadTitle || browserHostName
+})
+const headerSubtitle = computed(() => {
+  if (isSkillsRoute.value) return '管理已安装技能和当前运行能力。'
+  if (isHomeRoute.value) return '从已配置工作区快速发起新的 Codex 任务。'
+  const cwd = selectedThread.value?.cwd?.trim() ?? ''
+  return cwd || ''
+})
+const serviceStatusTone = computed<'live' | 'syncing' | 'warning' | 'danger'>(() => {
+  if (error.value.trim().length > 0) return 'danger'
+  if (notificationStale.value) return 'warning'
+  if (isLoadingMessages.value || isSendingMessage.value) return 'syncing'
+  return 'live'
+})
+const serviceStatusLabel = computed(() => {
+  if (error.value.trim().length > 0) return '出现异常'
+  if (notificationStale.value) return '同步延迟'
+  if (isLoadingMessages.value || isSendingMessage.value) return '同步中'
+  return '已连接'
+})
+const serviceStatusDetail = computed(() => {
+  if (error.value.trim().length > 0) return error.value.trim()
+  if (notificationStale.value) return '后台同步仍在进行，但实时通知暂时落后。'
+  if (selectedLiveOverlay.value?.activityLabel) return selectedLiveOverlay.value.activityLabel
+  return 'Web 服务状态正常。'
 })
 const filteredMessages = computed(() =>
   messages.value.filter((message) => {
@@ -620,6 +700,29 @@ const composerCwd = computed(() => {
   return selectedThread.value?.cwd?.trim() ?? ''
 })
 const isSelectedThreadInProgress = computed(() => !isHomeRoute.value && selectedThread.value?.inProgress === true)
+const threadStatusTone = computed<'live' | 'syncing' | 'warning' | 'danger'>(() => {
+  if (selectedThreadExecutionActive.value) return 'syncing'
+  if (selectedThread.value?.unread) return 'warning'
+  return 'live'
+})
+const threadStatusLabel = computed(() => {
+  if (isHomeRoute.value || isSkillsRoute.value || !selectedThread.value) return ''
+  if (selectedThreadExecutionActive.value) {
+    return selectedLiveOverlay.value?.activityLabel || '执行中'
+  }
+  if (selectedThread.value.unread) return '有未读更新'
+  return '就绪'
+})
+const desktopStatusTone = computed<'live' | 'syncing' | 'warning' | 'danger'>(() => {
+  if (isDesktopRefreshRunning.value) return 'syncing'
+  if (desktopAppStatus.value.available) return 'live'
+  return 'warning'
+})
+const desktopStatusLabel = computed(() => {
+  if (isDesktopRefreshRunning.value) return '刷新中'
+  if (desktopAppStatus.value.available) return desktopAppStatus.value.appRunning ? '已连接' : '可用'
+  return '不可用'
+})
 const newThreadFolderOptions = computed(() => {
   const options: Array<{ value: string; label: string }> = []
   const seenCwds = new Set<string>()
@@ -656,29 +759,42 @@ const newThreadFolderOptions = computed(() => {
 })
 const darkModeMediaQuery = typeof window !== 'undefined' ? window.matchMedia('(prefers-color-scheme: dark)') : null
 const githubTipsScopeOptions = computed<Array<{ value: GithubTipsScope; label: string }>>(() => [
-  { value: 'search-daily', label: 'Search daily' },
-  { value: 'search-weekly', label: 'Search weekly' },
-  { value: 'search-monthly', label: 'Search monthly' },
-  { value: 'trending-daily', label: 'Trending daily' },
-  { value: 'trending-weekly', label: 'Trending weekly' },
-  { value: 'trending-monthly', label: 'Trending monthly' },
+  { value: 'search-daily', label: '搜索日报' },
+  { value: 'search-weekly', label: '搜索周榜' },
+  { value: 'search-monthly', label: '搜索月榜' },
+  { value: 'trending-daily', label: '趋势日报' },
+  { value: 'trending-weekly', label: '趋势周榜' },
+  { value: 'trending-monthly', label: '趋势月榜' },
 ])
 const telegramStatusText = computed(() => {
-  if (!telegramStatus.value.configured) return 'Not configured'
-  const base = telegramStatus.value.active ? 'Online' : 'Configured (offline)'
-  const mapped = `${telegramStatus.value.mappedChats} chat(s), ${telegramStatus.value.mappedThreads} thread(s)`
-  const error = telegramStatus.value.lastError ? `, error: ${telegramStatus.value.lastError}` : ''
+  if (!telegramStatus.value.configured) return '未配置'
+  const base = telegramStatus.value.active ? '在线' : '已配置（离线）'
+  const mapped = `${telegramStatus.value.mappedChats} 个聊天，${telegramStatus.value.mappedThreads} 个线程`
+  const error = telegramStatus.value.lastError ? `，错误：${telegramStatus.value.lastError}` : ''
   return `${base}, ${mapped}${error}`
 })
 const isDesktopRefreshAvailable = computed(() => desktopAppStatus.value.available)
 const desktopRefreshButtonTitle = computed(() => {
   if (desktopAppStatus.value.available) {
-    return 'Close and reopen the official Codex desktop app so it reloads the latest web-side conversations.'
+    return '关闭并重开官方 Codex 桌面端，让它重新载入 Web 侧最新会话。'
   }
-  return desktopAppStatus.value.reason || 'Official Codex desktop app refresh is unavailable on this machine.'
+  return desktopAppStatus.value.reason || '当前机器无法刷新官方 Codex 桌面端。'
 })
 const desktopRefreshButtonLabel = computed(() => (
-  isDesktopRefreshRunning.value ? 'Refreshing...' : 'Refresh app'
+  isDesktopRefreshRunning.value ? '刷新中...' : '刷新桌面端'
+))
+const isDesktopRefreshRiskHigh = computed(() => (
+  selectedThread.value?.inProgress === true || selectedLiveOverlay.value !== null
+))
+const desktopRefreshConfirmTitle = computed(() => (
+  isDesktopRefreshRiskHigh.value
+    ? '刷新桌面端可能中断当前任务。'
+    : '是否刷新官方 Codex 桌面端？'
+))
+const desktopRefreshConfirmMessage = computed(() => (
+  isDesktopRefreshRiskHigh.value
+    ? '这会关闭并重开当前机器上的官方 Codex 桌面端。桌面端正在执行的任务可能会停止，7420 网页端不会关闭。'
+    : '这会关闭并重开官方 Codex 桌面端，让它重新载入最新的本地会话记录。'
 ))
 
 onMounted(() => {
@@ -739,7 +855,7 @@ async function refreshTelegramStatus(): Promise<void> {
   try {
     telegramStatus.value = await getTelegramStatus()
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to load Telegram status'
+    const message = error instanceof Error ? error.message : '加载 Telegram 状态失败'
     telegramStatus.value = {
       configured: false,
       active: false,
@@ -754,7 +870,7 @@ async function refreshDesktopAppAvailability(): Promise<void> {
   try {
     desktopAppStatus.value = await getDesktopAppStatus()
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to load desktop app status'
+    const message = error instanceof Error ? error.message : '加载桌面端状态失败'
     desktopAppStatus.value = {
       available: false,
       platform: '',
@@ -769,26 +885,31 @@ async function refreshDesktopAppAvailability(): Promise<void> {
 function onRefreshDesktopApp(): void {
   if (isDesktopRefreshRunning.value) return
   if (!desktopAppStatus.value.available) {
-    window.alert(desktopAppStatus.value.reason || 'Official Codex desktop app refresh is unavailable on this machine.')
+    window.alert(desktopAppStatus.value.reason || '当前机器无法刷新官方 Codex 桌面端。')
     return
   }
 
-  const currentThreadBusy = selectedThread.value?.inProgress === true || selectedLiveOverlay.value !== null
-  const confirmMessage = currentThreadBusy
-    ? 'This will close and reopen the official Codex desktop app on this Windows machine. It may interrupt tasks that are still running in the desktop client. The 7420 web view will stay open. Continue?'
-    : 'This will close and reopen the official Codex desktop app on this Windows machine. Continue?'
-  const shouldContinue = window.confirm(
-    confirmMessage,
-  )
-  if (!shouldContinue) return
+  isDesktopRefreshConfirmVisible.value = true
+}
 
+function closeDesktopRefreshConfirm(): void {
+  isDesktopRefreshConfirmVisible.value = false
+}
+
+function confirmDesktopRefresh(): void {
+  if (!desktopAppStatus.value.available || isDesktopRefreshRunning.value) {
+    closeDesktopRefreshConfirm()
+    return
+  }
+
+  closeDesktopRefreshConfirm()
   isDesktopRefreshRunning.value = true
   void refreshDesktopApp()
     .then((result) => {
       window.alert(result.message)
     })
     .catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : 'Failed to refresh the official Codex desktop app'
+      const message = error instanceof Error ? error.message : '刷新官方 Codex 桌面端失败'
       window.alert(message)
     })
     .finally(() => {
@@ -933,6 +1054,11 @@ function setSidebarCollapsed(nextValue: boolean): void {
 
 function onWindowKeyDown(event: KeyboardEvent): void {
   if (event.defaultPrevented) return
+  if (event.key === 'Escape' && isDesktopRefreshConfirmVisible.value) {
+    event.preventDefault()
+    closeDesktopRefreshConfirm()
+    return
+  }
   if (!event.ctrlKey && !event.metaKey) return
   if (event.shiftKey || event.altKey) return
   if (event.key.toLowerCase() !== 'b') return
@@ -1674,7 +1800,9 @@ async function submitFirstMessageForNewThread(
 }
 
 .content-root {
-  @apply h-full min-h-0 w-full flex flex-col overflow-y-hidden overflow-x-visible bg-white;
+  @apply h-full min-h-0 w-full flex flex-col overflow-y-hidden overflow-x-visible;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.78) 0%, rgba(252,249,242,0.98) 100%);
 }
 
 .sidebar-thread-controls-host {
@@ -1682,11 +1810,11 @@ async function submitFirstMessageForNewThread(
 }
 
 .sidebar-search-toggle {
-  @apply h-6.75 w-6.75 rounded-md border border-transparent bg-transparent text-zinc-600 flex items-center justify-center transition hover:border-zinc-200 hover:bg-zinc-50;
+  @apply h-7 w-7 rounded-xl border border-transparent bg-transparent text-[#6e6458] flex items-center justify-center transition hover:border-[#ddd5c7] hover:bg-[#fffdf8];
 }
 
 .sidebar-search-toggle[aria-pressed='true'] {
-  @apply border-zinc-300 bg-zinc-100 text-zinc-700;
+  @apply border-[#cec2ad] bg-[#ece4d6] text-[#433b31];
 }
 
 .sidebar-search-toggle-icon {
@@ -1694,19 +1822,19 @@ async function submitFirstMessageForNewThread(
 }
 
 .sidebar-search-bar {
-  @apply flex items-center gap-1.5 mx-2 px-2 py-1 rounded-md border border-zinc-200 bg-white transition-colors focus-within:border-zinc-400;
+  @apply sticky top-0 z-10 flex items-center gap-1.5 mx-2 px-2.5 py-2 rounded-2xl border border-[#ddd5c7] bg-[#fffcf7]/95 transition-colors backdrop-blur focus-within:border-[#b8a98d];
 }
 
 .sidebar-search-bar-icon {
-  @apply w-3.5 h-3.5 text-zinc-400 shrink-0;
+  @apply w-3.5 h-3.5 text-[#9a907f] shrink-0;
 }
 
 .sidebar-search-input {
-  @apply flex-1 min-w-0 bg-transparent text-sm text-zinc-800 placeholder-zinc-400 outline-none border-none p-0;
+  @apply flex-1 min-w-0 bg-transparent text-sm text-[#2d261f] placeholder-[#9f9484] outline-none border-none p-0;
 }
 
 .sidebar-search-clear {
-  @apply w-4 h-4 rounded text-zinc-400 flex items-center justify-center transition hover:text-zinc-600;
+  @apply w-5 h-5 rounded-lg text-[#9a907f] flex items-center justify-center transition hover:bg-[#f1ebde] hover:text-[#544a3d];
 }
 
 .sidebar-search-clear-icon {
@@ -1714,11 +1842,11 @@ async function submitFirstMessageForNewThread(
 }
 
 .sidebar-skills-link {
-  @apply mx-2 flex items-center rounded-lg border-0 bg-transparent px-2 py-1.5 text-sm text-zinc-600 transition hover:bg-zinc-200 hover:text-zinc-900 cursor-pointer;
+  @apply mx-2 flex items-center rounded-2xl border border-transparent bg-transparent px-3 py-2 text-sm text-[#5b5146] transition hover:bg-[#ece4d6] hover:text-[#2d261f] cursor-pointer;
 }
 
 .sidebar-skills-link.is-active {
-  @apply bg-zinc-200 text-zinc-900 font-medium;
+  @apply border-[#d5c8b6] bg-[#ece4d6] text-[#1f2937] font-medium;
 }
 
 .sidebar-thread-controls-header-host {
@@ -1726,15 +1854,56 @@ async function submitFirstMessageForNewThread(
 }
 
 .desktop-refresh-button {
-  @apply inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-60;
+  @apply inline-flex items-center gap-1 rounded-full border border-[#d6c9b6] bg-[#fffdf8] px-2.5 py-1 text-[11px] font-semibold text-[#544a3d] transition hover:border-[#bca98d] hover:bg-[#f7f1e5] hover:text-[#1f2937] disabled:cursor-not-allowed disabled:opacity-60;
+}
+
+.desktop-refresh-button[data-busy='true'] {
+  @apply border-[#e7d9b0] bg-[#fcf7e8] text-[#8a6a11];
 }
 
 .desktop-refresh-button-icon {
-  @apply h-3.5 w-3.5;
+  @apply h-3.25 w-3.25;
 }
 
 .content-body {
-  @apply flex-1 min-h-0 w-full flex flex-col gap-2 sm:gap-3 pt-1 pb-2 sm:pb-4 overflow-y-hidden overflow-x-visible;
+  @apply flex-1 min-h-0 w-full flex flex-col gap-2 pt-0.5 pb-2 sm:pb-4 overflow-y-hidden overflow-x-visible;
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+
+.content-header-subtitle {
+  @apply m-0 text-[11px] leading-4 text-[#8f8577] truncate;
+}
+
+.content-status-strip {
+  @apply flex min-h-0 flex-wrap items-center gap-1.5;
+}
+
+.content-status-pill {
+  @apply inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-medium;
+}
+
+.content-status-pill-label {
+  @apply uppercase tracking-[0.08em] text-[9px] font-semibold opacity-70;
+}
+
+.content-status-pill[data-tone='live'] {
+  @apply border-[#cbe7e1] bg-[#edf9f6] text-[#0f766e];
+}
+
+.content-status-pill[data-tone='syncing'] {
+  @apply border-[#d8ccba] bg-[#f7f1e5] text-[#6d6354];
+}
+
+.content-status-pill[data-tone='warning'] {
+  @apply border-[#e7d9b0] bg-[#fcf7e8] text-[#8a6a11];
+}
+
+.content-status-pill[data-tone='danger'] {
+  @apply border-[#f1cbc3] bg-[#fff0ec] text-[#c2410c];
+}
+
+.content-status-detail {
+  @apply hidden sm:inline text-[11px] leading-4 text-[#8f8577] truncate;
 }
 
 
@@ -1755,15 +1924,15 @@ async function submitFirstMessageForNewThread(
 }
 
 .new-thread-empty {
-  @apply flex-1 min-h-0 flex flex-col items-center justify-center gap-0.5 px-3 sm:px-6;
+  @apply flex-1 min-h-0 flex flex-col items-center justify-center gap-1 px-3 sm:px-6;
 }
 
 .new-thread-hero {
-  @apply m-0 text-2xl sm:text-[2.5rem] font-normal leading-[1.05] text-zinc-900;
+  @apply m-0 text-2xl sm:text-[2.5rem] font-semibold leading-[1.05] text-[#1f2937];
 }
 
 .new-thread-folder-dropdown {
-  @apply text-2xl sm:text-[2.5rem] text-zinc-500;
+  @apply text-2xl sm:text-[2.5rem] text-[#73695d];
 }
 
 .new-thread-folder-dropdown :deep(.composer-dropdown-trigger) {
@@ -1852,7 +2021,7 @@ async function submitFirstMessageForNewThread(
 }
 
 .worktree-init-status.is-running {
-  @apply border-zinc-300 bg-zinc-50 text-zinc-700;
+  @apply border-[#ddd5c7] bg-[#f7f1e5] text-[#6d6354];
 }
 
 .worktree-init-status.is-error {
@@ -1868,11 +2037,11 @@ async function submitFirstMessageForNewThread(
 }
 
 .sidebar-settings-area {
-  @apply shrink-0 bg-slate-100 pt-2 px-2 pb-2 border-t border-zinc-200;
+  @apply shrink-0 pt-2 px-2 pb-2 border-t border-[#ddd5c7] bg-[#f4efe6]/90;
 }
 
 .sidebar-settings-button {
-  @apply flex items-center gap-2 w-full rounded-lg border-0 bg-transparent px-2 py-2 text-sm text-zinc-600 transition hover:bg-zinc-200 hover:text-zinc-900 cursor-pointer;
+  @apply flex items-center gap-2 w-full rounded-2xl border border-transparent bg-transparent px-3 py-2 text-sm text-[#5b5146] transition hover:bg-[#ece4d6] hover:text-[#2d261f] cursor-pointer;
 }
 
 .sidebar-settings-icon {
@@ -1880,11 +2049,11 @@ async function submitFirstMessageForNewThread(
 }
 
 .sidebar-settings-panel {
-  @apply mb-1 rounded-lg border border-zinc-200 bg-white overflow-hidden;
+  @apply mb-1 rounded-3xl border border-[#ddd5c7] bg-[#fffdf8] overflow-hidden;
 }
 
 .sidebar-settings-row {
-  @apply flex items-center justify-between w-full px-3 py-2.5 text-sm text-zinc-700 border-0 bg-transparent transition hover:bg-zinc-50 cursor-pointer;
+  @apply flex items-center justify-between w-full px-3 py-2.5 text-sm text-[#544a3d] border-0 bg-transparent transition hover:bg-[#f7f1e5] cursor-pointer;
 }
 
 .sidebar-settings-row--select {
@@ -1896,7 +2065,7 @@ async function submitFirstMessageForNewThread(
 }
 
 .sidebar-settings-language-dropdown :deep(.composer-dropdown-trigger) {
-  @apply h-auto rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-700;
+  @apply h-auto rounded-xl border border-[#ddd5c7] bg-white px-2 py-1 text-xs text-[#544a3d];
 }
 
 .sidebar-settings-language-dropdown :deep(.composer-dropdown-value) {
@@ -1904,7 +2073,7 @@ async function submitFirstMessageForNewThread(
 }
 
 .sidebar-settings-row + .sidebar-settings-row {
-  @apply border-t border-zinc-100;
+  @apply border-t border-[#f1eadf];
 }
 
 .sidebar-settings-label {
@@ -1912,11 +2081,11 @@ async function submitFirstMessageForNewThread(
 }
 
 .sidebar-settings-value {
-  @apply text-xs text-zinc-500 bg-zinc-100 rounded px-1.5 py-0.5;
+  @apply text-xs text-[#7b7062] bg-[#f1ebde] rounded-full px-2 py-0.5;
 }
 
 .sidebar-settings-toggle {
-  @apply relative w-9 h-5 rounded-full bg-zinc-300 transition-colors shrink-0;
+  @apply relative w-9 h-5 rounded-full bg-[#d8cfbf] transition-colors shrink-0;
 }
 
 .sidebar-settings-toggle::after {
@@ -1925,7 +2094,7 @@ async function submitFirstMessageForNewThread(
 }
 
 .sidebar-settings-toggle.is-on {
-  @apply bg-zinc-800;
+  @apply bg-[#1f2937];
 }
 
 .sidebar-settings-toggle.is-on::after {
@@ -1944,11 +2113,47 @@ async function submitFirstMessageForNewThread(
 }
 
 .sidebar-settings-rate-limits {
-  @apply border-t border-zinc-200 px-2 pt-2;
+  @apply border-t border-[#e9dfce] px-2 pt-2;
 }
 
 .sidebar-settings-build-label {
-  @apply border-t border-zinc-100 px-3 py-2 text-[11px] text-zinc-500;
+  @apply border-t border-[#f1eadf] px-3 py-2 text-[11px] text-[#8f8577];
+}
+
+.desktop-refresh-confirm-overlay {
+  @apply fixed inset-0 z-50 flex items-center justify-center bg-[#1f2937]/42 p-4 backdrop-blur-[2px];
+}
+
+.desktop-refresh-confirm-dialog {
+  @apply w-full max-w-md rounded-[28px] border border-[#ddd5c7] bg-[#fffdf8] p-5 shadow-2xl shadow-[#1f2937]/15;
+}
+
+.desktop-refresh-confirm-kicker {
+  @apply m-0 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8f8577];
+}
+
+.desktop-refresh-confirm-title {
+  @apply mt-2 mb-0 text-lg font-semibold leading-7 text-[#1f2937];
+}
+
+.desktop-refresh-confirm-text {
+  @apply mt-2 mb-0 text-sm leading-6 text-[#5c5247];
+}
+
+.desktop-refresh-confirm-actions {
+  @apply mt-5 flex items-center justify-end gap-2;
+}
+
+.desktop-refresh-confirm-button {
+  @apply inline-flex items-center justify-center rounded-full border border-[#d8cfbf] bg-[#fffdf8] px-4 py-2 text-sm font-semibold text-[#544a3d] transition hover:border-[#bca98d] hover:bg-[#f7f1e5];
+}
+
+.desktop-refresh-confirm-button-primary {
+  @apply border-[#1f2937] bg-[#1f2937] text-white hover:border-[#111827] hover:bg-[#111827];
+}
+
+.desktop-refresh-confirm-button-warning {
+  @apply border-[#c2410c] bg-[#c2410c] hover:border-[#9a3412] hover:bg-[#9a3412];
 }
 
 </style>

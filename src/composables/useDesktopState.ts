@@ -713,6 +713,7 @@ export function useDesktopState() {
   const isRollingBack = ref(false)
   const error = ref('')
   const isPolling = ref(false)
+  const notificationHealthTick = ref(Date.now())
   const hasLoadedThreads = ref(false)
   let stopNotificationStream: (() => void) | null = null
   let backgroundSyncTimer: number | null = null
@@ -772,6 +773,13 @@ export function useDesktopState() {
       reasoningText,
       errorText,
     }
+  })
+  const selectedThreadExecutionActive = computed(() => (
+    selectedThreadId.value ? isThreadExecutionActive(selectedThreadId.value) : false
+  ))
+  const notificationStale = computed(() => {
+    notificationHealthTick.value
+    return Date.now() - lastNotificationAtMs >= NOTIFICATION_STALE_MS
   })
   const messages = computed<UiMessage[]>(() => {
     const threadId = selectedThreadId.value
@@ -2941,6 +2949,7 @@ export function useDesktopState() {
     if (typeof window === 'undefined' || backgroundSyncTimer !== null) return
     backgroundSyncTimer = window.setInterval(() => {
       const now = Date.now()
+      notificationHealthTick.value = now
       const activeThreadId = selectedThreadId.value
       const isInProgress = activeThreadId ? isThreadExecutionActive(activeThreadId) : false
       const lastDetailSyncAt = activeThreadId ? (lastThreadDetailSyncAtById.value[activeThreadId] ?? 0) : 0
@@ -3027,6 +3036,7 @@ export function useDesktopState() {
     scheduleBackgroundSync()
     stopNotificationStream = subscribeCodexNotifications((notification) => {
       lastNotificationAtMs = Date.now()
+      notificationHealthTick.value = lastNotificationAtMs
       applyRealtimeUpdates(notification)
       queueEventDrivenSync(notification)
     })
@@ -3082,6 +3092,7 @@ export function useDesktopState() {
     activeReasoningItemId = ''
     shouldAutoScrollOnNextAgentEvent = false
     lastNotificationAtMs = Date.now()
+    notificationHealthTick.value = lastNotificationAtMs
     persistedMessagesByThreadId.value = {}
     liveAgentMessagesByThreadId.value = {}
     liveReasoningTextByThreadId.value = {}
@@ -3130,6 +3141,7 @@ export function useDesktopState() {
     selectedThreadScrollState,
     selectedThreadServerRequests,
     selectedLiveOverlay,
+    selectedThreadExecutionActive,
     selectedThreadId,
     availableModelIds,
     selectedModelId,
@@ -3143,6 +3155,7 @@ export function useDesktopState() {
     isSendingMessage,
     isInterruptingTurn,
     isUpdatingSpeedMode,
+    notificationStale,
     error,
     refreshAll,
     refreshSkills,
