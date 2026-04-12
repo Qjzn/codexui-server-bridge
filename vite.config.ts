@@ -84,6 +84,30 @@ export default defineConfig({
     "import.meta.env.VITE_WORKTREE_NAME": JSON.stringify(worktreeName),
     "import.meta.env.VITE_APP_VERSION": JSON.stringify(appVersion),
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (
+            id.includes("node_modules/firebase/") ||
+            id.includes("node_modules/@firebase/") ||
+            id.includes("node_modules/idb/")
+          ) {
+            return "firebase";
+          }
+          if (
+            id.includes("node_modules/vue/") ||
+            id.includes("node_modules/@vue/") ||
+            id.includes("node_modules/vue-router/")
+          ) {
+            return "vue-vendor";
+          }
+          return "vendor";
+        },
+      },
+    },
+  },
   server: {
     host: "0.0.0.0",
     port: 5173,

@@ -6,6 +6,8 @@ artifacts*/
 output/
 .playwright-cli/
 *.tsbuildinfo
+test-*.png
+tmp-*.png
 
 pnpm-lock.yaml
 .codex/

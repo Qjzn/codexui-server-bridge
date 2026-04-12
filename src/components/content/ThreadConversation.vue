@@ -1,7 +1,7 @@
 <template>
   <section class="conversation-root">
     <div v-if="showBlockingLoading" class="conversation-loading" aria-hidden="true">
-      <span class="conversation-loading-kicker">加载会话</span>
+      <span class="conversation-loading-kicker">载入中</span>
       <span class="conversation-loading-card conversation-loading-card-user">
         <span class="conversation-loading-line conversation-loading-line-short" />
       </span>
@@ -26,13 +26,15 @@
     <template v-else>
       <div v-if="showInlineLoading" class="conversation-inline-loading" aria-live="polite">
         <span class="conversation-inline-loading-bar" />
-        <span class="conversation-inline-loading-text">正在同步最新消息...</span>
+        <span class="conversation-inline-loading-text">同步中...</span>
       </div>
 
       <ul ref="conversationListRef" class="conversation-list" @scroll="onConversationScroll">
       <li
         v-for="request in pendingRequests"
         :key="`server-request:${request.id}`"
+        :ref="(el) => setPendingRequestMeasureRef(request.id, el)"
+        :data-pending-request-id="String(request.id)"
         class="conversation-item conversation-item-request"
       >
         <div class="message-row">
@@ -104,56 +106,76 @@
       </li>
 
       <li
-        v-for="(message, messageIndex) in messages"
-        :key="message.id"
+        v-if="virtualTopSpacerHeight > 0"
+        class="conversation-spacer"
+        aria-hidden="true"
+        :style="{ height: `${String(virtualTopSpacerHeight)}px` }"
+      />
+      <li
+        v-for="entry in virtualizedMessages"
+        :key="entry.message.id"
+        :ref="(el) => setMessageMeasureRef(entry.message.id, el)"
         class="conversation-item"
-        :class="{ 'conversation-item-actionable': canShowMessageActions(message) }"
-        :data-role="message.role"
-        :data-message-type="message.messageType || ''"
+        :class="{ 'conversation-item-actionable': canShowMessageActions(entry.message) }"
+        :data-role="entry.message.role"
+        :data-message-type="entry.message.messageType || ''"
       >
-        <div v-if="isCommandMessage(message)" class="message-row" data-role="system">
+        <div v-if="isCommandMessage(entry.message)" class="message-row" data-role="system">
           <div class="message-stack" data-role="system">
             <button
               type="button"
               class="cmd-row"
-              :class="[commandStatusClass(message), { 'cmd-expanded': isCommandExpanded(message) }]"
-              @click="toggleCommandExpand(message)"
+              :class="[commandStatusClass(entry.message), { 'cmd-expanded': isCommandExpanded(entry.message) }]"
+              @click="toggleCommandExpand(entry.message)"
             >
-              <span class="cmd-chevron" :class="{ 'cmd-chevron-open': isCommandExpanded(message) }">▶</span>
-              <span class="cmd-status">{{ commandStatusLabel(message) }}</span>
-              <code class="cmd-label">{{ message.commandExecution?.command || '（命令）' }}</code>
+              <span class="cmd-chevron" :class="{ 'cmd-chevron-open': isCommandExpanded(entry.message) }">▶</span>
+              <span class="cmd-status">{{ commandStatusLabel(entry.message) }}</span>
+              <span v-if="commandDurationLabel(entry.message)" class="cmd-duration">{{ commandDurationLabel(entry.message) }}</span>
+              <code class="cmd-label">{{ entry.message.commandExecution?.command || '（命令）' }}</code>
             </button>
             <div
               class="cmd-output-wrap"
-              :class="{ 'cmd-output-visible': isCommandExpanded(message), 'cmd-output-collapsing': isCommandCollapsing(message) }"
+              :class="{ 'cmd-output-visible': isCommandExpanded(entry.message), 'cmd-output-collapsing': isCommandCollapsing(entry.message) }"
             >
               <div class="cmd-output-inner">
-                <pre class="cmd-output">{{ message.commandExecution?.aggregatedOutput || '（无输出）' }}</pre>
+                <pre class="cmd-output">{{ entry.message.commandExecution?.aggregatedOutput || '（无输出）' }}</pre>
               </div>
             </div>
           </div>
         </div>
 
-        <div v-else class="message-row" :data-role="message.role" :data-message-type="message.messageType || ''">
-          <div class="message-stack" :data-role="message.role">
-            <p v-if="messageRoleLabel(message, messageIndex)" class="message-eyebrow" :data-role="message.role">
-              {{ messageRoleLabel(message, messageIndex) }}
+        <div
+          v-else
+          class="message-row"
+          :data-role="entry.message.role"
+          :data-message-type="entry.message.messageType || ''"
+        >
+          <div class="message-stack" :data-role="entry.message.role">
+            <p
+              v-if="messageRoleLabel(entry.message, entry.messageIndex)"
+              class="message-eyebrow"
+              :data-role="entry.message.role"
+            >
+              {{ messageRoleLabel(entry.message, entry.messageIndex) }}
             </p>
-            <article class="message-body" :data-role="message.role">
+            <article class="message-body" :data-role="entry.message.role">
               <ul
-                v-if="message.images && message.images.length > 0"
+                v-if="entry.message.images && entry.message.images.length > 0"
                 class="message-image-list"
-                :data-role="message.role"
+                :data-role="entry.message.role"
               >
-                <li v-for="imageUrl in message.images" :key="imageUrl" class="message-image-item">
+                <li v-for="imageUrl in entry.message.images" :key="imageUrl" class="message-image-item">
                   <button class="message-image-button" type="button" @click="openImageModal(imageUrl)">
                     <img class="message-image-preview" :src="toRenderableImageUrl(imageUrl)" alt="消息图片预览" loading="lazy" />
                   </button>
                 </li>
               </ul>
 
-              <div v-if="message.fileAttachments && message.fileAttachments.length > 0" class="message-file-attachments">
-                <span v-for="att in message.fileAttachments" :key="att.path" class="message-file-chip">
+              <div
+                v-if="entry.message.fileAttachments && entry.message.fileAttachments.length > 0"
+                class="message-file-attachments"
+              >
+                <span v-for="att in entry.message.fileAttachments" :key="att.path" class="message-file-chip">
                   <span class="message-file-chip-icon">📄</span>
                   <span class="message-file-link-wrap">
                     <a
@@ -170,17 +192,17 @@
                 </span>
               </div>
 
-              <article v-if="message.text.length > 0" class="message-card" :data-role="message.role">
-                <div v-if="message.messageType === 'worked'" class="worked-separator-wrap" aria-live="polite">
-                  <button type="button" class="worked-separator" @click="toggleWorkedExpand(message)">
+              <article v-if="entry.message.text.length > 0" class="message-card" :data-role="entry.message.role">
+                <div v-if="entry.message.messageType === 'worked'" class="worked-separator-wrap" aria-live="polite">
+                  <button type="button" class="worked-separator" @click="toggleWorkedExpand(entry.message)">
                     <span class="worked-separator-line" aria-hidden="true" />
-                    <span class="worked-chevron" :class="{ 'worked-chevron-open': isWorkedExpanded(message) }">▶</span>
-                    <p class="worked-separator-text">{{ message.text }}</p>
+                    <span class="worked-chevron" :class="{ 'worked-chevron-open': isWorkedExpanded(entry.message) }">▶</span>
+                    <p class="worked-separator-text">{{ entry.message.text }}</p>
                     <span class="worked-separator-line" aria-hidden="true" />
                   </button>
-                  <div v-if="isWorkedExpanded(message)" class="worked-details">
+                  <div v-if="isWorkedExpanded(entry.message)" class="worked-details">
                     <div
-                      v-for="cmd in getCommandsForWorked(messages, messages.indexOf(message))"
+                      v-for="cmd in getWorkedCommands(entry.message.id)"
                       :key="`worked-cmd-${cmd.id}`"
                       class="worked-cmd-item"
                     >
@@ -192,6 +214,7 @@
                       >
                         <span class="cmd-chevron" :class="{ 'cmd-chevron-open': isCommandExpanded(cmd) }">▶</span>
                         <span class="cmd-status">{{ commandStatusLabel(cmd) }}</span>
+                        <span v-if="commandDurationLabel(cmd)" class="cmd-duration">{{ commandDurationLabel(cmd) }}</span>
                         <code class="cmd-label">{{ cmd.commandExecution?.command || '（命令）' }}</code>
                       </button>
                       <div
@@ -206,9 +229,12 @@
                   </div>
                 </div>
                 <div v-else class="message-text-flow">
-                  <template v-for="(block, blockIndex) in parseMessageBlocks(message.text)" :key="`block-${blockIndex}`">
+                  <template
+                    v-for="(block, blockIndex) in getPreparedMessageBlocks(entry.message)"
+                    :key="`block-${blockIndex}`"
+                  >
                     <p v-if="block.kind === 'text'" class="message-text">
-                      <template v-for="(segment, segmentIndex) in parseInlineSegments(block.value)" :key="`seg-${blockIndex}-${segmentIndex}`">
+                      <template v-for="(segment, segmentIndex) in block.segments" :key="`seg-${blockIndex}-${segmentIndex}`">
                         <span v-if="segment.kind === 'text'">{{ segment.value }}</span>
                         <strong v-else-if="segment.kind === 'bold'" class="message-bold-text">{{ segment.value }}</strong>
                         <span v-else-if="segment.kind === 'file'" class="message-file-link-wrap">
@@ -237,7 +263,7 @@
                         <code v-else class="message-inline-code">{{ segment.value }}</code>
                       </template>
                     </p>
-                    <p v-else-if="isMarkdownImageFailed(message.id, blockIndex)" class="message-text">{{ block.markdown }}</p>
+                    <p v-else-if="isMarkdownImageFailed(entry.message.id, blockIndex)" class="message-text">{{ block.markdown }}</p>
                     <button
                       v-else
                       class="message-image-button"
@@ -249,7 +275,7 @@
                         :src="block.url"
                         :alt="block.alt || '消息内图片'"
                         loading="lazy"
-                        @error="onMarkdownImageError(message.id, blockIndex)"
+                        @error="onMarkdownImageError(entry.message.id, blockIndex)"
                       />
                     </button>
                   </template>
@@ -257,23 +283,23 @@
               </article>
             </article>
 
-            <div v-if="canShowMessageActions(message)" class="message-actions">
+            <div v-if="canShowMessageActions(entry.message)" class="message-actions">
               <button
-                v-if="canCopyMessage(message)"
+                v-if="canCopyMessage(entry.message)"
                 class="message-action-button"
                 type="button"
                 title="复制消息内容"
-                @click="onCopyMessage(message)"
+                @click="onCopyMessage(entry.message)"
               >
                 <IconTablerCopy class="message-action-icon" />
                 <span class="message-action-label">复制</span>
               </button>
               <button
-                v-if="canRollbackMessage(message)"
+                v-if="canRollbackMessage(entry.message)"
                 class="message-action-button"
                 type="button"
                 title="回滚到这条消息，并移除其后的当前轮次内容"
-                @click="onRollback(message)"
+                @click="onRollback(entry.message)"
               >
                 <IconTablerArrowBackUp class="message-action-icon" />
                 <span class="message-action-label">回滚</span>
@@ -282,10 +308,20 @@
           </div>
         </div>
       </li>
+      <li
+        v-if="virtualBottomSpacerHeight > 0"
+        class="conversation-spacer"
+        aria-hidden="true"
+        :style="{ height: `${String(virtualBottomSpacerHeight)}px` }"
+      />
       <li v-if="liveOverlay" class="conversation-item conversation-item-overlay">
         <div class="message-row">
           <div class="message-stack">
-            <article class="live-overlay-inline" aria-live="polite">
+            <article
+              v-if="shouldRenderDetailedLiveOverlay"
+              class="live-overlay-inline"
+              aria-live="polite"
+            >
               <div class="live-overlay-head">
                 <span class="live-overlay-indicator" aria-hidden="true">
                   <span class="live-overlay-indicator-ring" />
@@ -319,7 +355,97 @@
               <p v-else class="live-overlay-hint">
                 {{ liveOverlayHint(liveOverlay) }}
               </p>
+              <section v-if="overlayPrimaryPendingRequest" class="live-overlay-actions">
+                <template v-if="isApprovalRequestMethod(overlayPrimaryPendingRequest.method)">
+                  <button
+                    type="button"
+                    class="live-overlay-action live-overlay-action-primary"
+                    @click="onRespondApproval(overlayPrimaryPendingRequest.id, 'accept')"
+                  >
+                    允许
+                  </button>
+                  <button
+                    type="button"
+                    class="live-overlay-action"
+                    @click="onRespondApproval(overlayPrimaryPendingRequest.id, 'acceptForSession')"
+                  >
+                    始终允许
+                  </button>
+                  <button
+                    type="button"
+                    class="live-overlay-action"
+                    @click="onRespondApproval(overlayPrimaryPendingRequest.id, 'decline')"
+                  >
+                    拒绝
+                  </button>
+                  <button
+                    type="button"
+                    class="live-overlay-action"
+                    @click="onRespondApproval(overlayPrimaryPendingRequest.id, 'cancel')"
+                  >
+                    取消
+                  </button>
+                </template>
+                <template v-else-if="overlayPrimaryPendingRequest.method === 'item/tool/call'">
+                  <button
+                    type="button"
+                    class="live-overlay-action live-overlay-action-primary"
+                    @click="onRespondToolCallFailure(overlayPrimaryPendingRequest.id)"
+                  >
+                    返回失败
+                  </button>
+                  <button
+                    type="button"
+                    class="live-overlay-action"
+                    @click="onRespondToolCallSuccess(overlayPrimaryPendingRequest.id)"
+                  >
+                    返回成功
+                  </button>
+                  <button
+                    type="button"
+                    class="live-overlay-action"
+                    @click="scrollToPendingRequests"
+                  >
+                    查看详情
+                  </button>
+                </template>
+                <template v-else>
+                  <button
+                    type="button"
+                    class="live-overlay-action live-overlay-action-primary"
+                    @click="scrollToPendingRequests"
+                  >
+                    {{ overlayPrimaryPendingRequest.method === 'item/tool/requestUserInput' ? '去填写' : '查看请求' }}
+                  </button>
+                </template>
+              </section>
+              <p v-if="pendingRequests.length > 1" class="live-overlay-request-count">
+                还有 {{ pendingRequests.length - 1 }} 个待处理请求
+              </p>
               <p v-if="liveOverlay.errorText" class="live-overlay-error">{{ liveOverlay.errorText }}</p>
+            </article>
+            <article
+              v-else
+              class="live-overlay-inline live-overlay-inline-compact"
+              aria-live="polite"
+            >
+              <div class="live-overlay-compact-main">
+                <span class="live-overlay-indicator" aria-hidden="true">
+                  <span class="live-overlay-indicator-ring" />
+                  <span class="live-overlay-indicator-core" />
+                </span>
+                <div class="live-overlay-compact-copy">
+                  <div class="live-overlay-compact-head">
+                    <p class="live-overlay-compact-label">{{ liveOverlayPrimaryLabel(liveOverlay) }}</p>
+                    <span class="live-overlay-dots" aria-hidden="true">
+                      <span class="live-overlay-dot" />
+                      <span class="live-overlay-dot" />
+                      <span class="live-overlay-dot" />
+                    </span>
+                  </div>
+                  <p class="live-overlay-compact-hint">{{ liveOverlayCompactHint(liveOverlay) }}</p>
+                </div>
+              </div>
             </article>
           </div>
         </div>
@@ -379,6 +505,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import type { ComponentPublicInstance } from 'vue'
 import type { ThreadScrollState, UiLiveOverlay, UiMessage, UiServerRequest } from '../../types/codex'
 import IconTablerX from '../icons/IconTablerX.vue'
 import IconTablerArrowBackUp from '../icons/IconTablerArrowBackUp.vue'
@@ -389,6 +516,9 @@ const expandedCommandIds = ref<Set<string>>(new Set())
 const collapsingCommandIds = ref<Set<string>>(new Set())
 const expandedWorkedIds = ref<Set<string>>(new Set())
 const prevCommandStatuses = ref<Record<string, string>>({})
+const commandElapsedNowMs = ref(Date.now())
+const observedCommandStartedAtById = ref<Record<string, number>>({})
+let commandElapsedTimer: number | null = null
 
 function isCommandMessage(message: UiMessage): boolean {
   return message.messageType === 'commandExecution' && !!message.commandExecution
@@ -436,11 +566,103 @@ function commandStatusLabel(message: UiMessage): string {
   }
 }
 
+function formatCommandDuration(durationMs: number): string {
+  if (!Number.isFinite(durationMs) || durationMs < 0) return ''
+  const totalSeconds = Math.max(1, Math.floor(durationMs / 1000))
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  if (hours > 0) {
+    if (minutes > 0) return `${String(hours)} 小时 ${String(minutes)} 分`
+    return `${String(hours)} 小时`
+  }
+  if (minutes > 0) {
+    if (seconds > 0) return `${String(minutes)} 分 ${String(seconds)} 秒`
+    return `${String(minutes)} 分`
+  }
+  return `${String(seconds)} 秒`
+}
+
+function resolveCommandDurationMs(message: UiMessage): number | null {
+  const ce = message.commandExecution
+  if (!ce) return null
+  if (ce.status === 'inProgress') {
+    const startedAtMs =
+      (typeof ce.startedAtMs === 'number' && Number.isFinite(ce.startedAtMs) && ce.startedAtMs > 0)
+        ? ce.startedAtMs
+        : observedCommandStartedAtById.value[message.id]
+    if (typeof startedAtMs === 'number' && Number.isFinite(startedAtMs) && startedAtMs > 0) {
+      return Math.max(0, commandElapsedNowMs.value - startedAtMs)
+    }
+  }
+  return typeof ce.durationMs === 'number' && Number.isFinite(ce.durationMs)
+    ? Math.max(0, ce.durationMs)
+    : null
+}
+
+function commandDurationLabel(message: UiMessage): string {
+  const ce = message.commandExecution
+  if (!ce) return ''
+  const durationMs = resolveCommandDurationMs(message)
+  if (durationMs === null) return ''
+  const durationText = formatCommandDuration(durationMs)
+  if (!durationText) return ''
+  return ce.status === 'inProgress' ? `已运行 ${durationText}` : `用时 ${durationText}`
+}
+
 function commandStatusClass(message: UiMessage): string {
   const s = message.commandExecution?.status
   if (s === 'inProgress') return 'cmd-status-running'
   if (s === 'completed' && message.commandExecution?.exitCode === 0) return 'cmd-status-ok'
   return 'cmd-status-error'
+}
+
+function stopCommandElapsedTimer(): void {
+  if (commandElapsedTimer !== null && typeof window !== 'undefined') {
+    window.clearInterval(commandElapsedTimer)
+    commandElapsedTimer = null
+  }
+}
+
+function startCommandElapsedTimer(): void {
+  if (typeof window === 'undefined') return
+  commandElapsedNowMs.value = Date.now()
+  if (commandElapsedTimer !== null) return
+  commandElapsedTimer = window.setInterval(() => {
+    commandElapsedNowMs.value = Date.now()
+  }, 1000)
+}
+
+function syncObservedCommandStartTimes(messages: UiMessage[]): void {
+  const next: Record<string, number> = {}
+  const now = Date.now()
+  let hasRunningCommand = false
+
+  for (const message of messages) {
+    const ce = message.commandExecution
+    if (!ce || message.messageType !== 'commandExecution' || ce.status !== 'inProgress') continue
+    hasRunningCommand = true
+    if (typeof ce.startedAtMs === 'number' && Number.isFinite(ce.startedAtMs) && ce.startedAtMs > 0) {
+      next[message.id] = ce.startedAtMs
+      continue
+    }
+    const knownStartedAt = observedCommandStartedAtById.value[message.id]
+    if (typeof knownStartedAt === 'number' && Number.isFinite(knownStartedAt) && knownStartedAt > 0) {
+      next[message.id] = knownStartedAt
+      continue
+    }
+    const baseDurationMs = typeof ce.durationMs === 'number' && Number.isFinite(ce.durationMs)
+      ? Math.max(0, ce.durationMs)
+      : 0
+    next[message.id] = Math.max(0, now - baseDurationMs)
+  }
+
+  observedCommandStartedAtById.value = next
+  if (hasRunningCommand) {
+    startCommandElapsedTimer()
+  } else {
+    stopCommandElapsedTimer()
+  }
 }
 
 function scheduleCollapse(messageId: string): void {
@@ -452,16 +674,6 @@ function scheduleCollapse(messageId: string): void {
     next.delete(messageId)
     collapsingCommandIds.value = next
   }, 1000)
-}
-
-function getCommandsForWorked(messages: UiMessage[], workedIndex: number): UiMessage[] {
-  const result: UiMessage[] = []
-  for (let i = workedIndex - 1; i >= 0; i--) {
-    const m = messages[i]
-    if (m.messageType === 'commandExecution') result.unshift(m)
-    else if (m.role === 'user' || m.messageType === 'worked') break
-  }
-  return result
 }
 
 const props = defineProps<{
@@ -501,17 +713,115 @@ type InlineSegment =
 type MessageBlock =
   | { kind: 'text'; value: string }
   | { kind: 'image'; url: string; alt: string; markdown: string }
+type PreparedMessageBlock =
+  | { kind: 'text'; value: string; segments: InlineSegment[] }
+  | { kind: 'image'; url: string; alt: string; markdown: string }
+type VirtualizedMessageEntry = {
+  message: UiMessage
+  messageIndex: number
+}
+type MeasureRefTarget = Element | ComponentPublicInstance | null
+type ScrollAnchorSnapshot = {
+  measureKind: 'message' | 'request'
+  measureId: string
+  viewportOffset: number
+}
+
+const VIRTUALIZE_MIN_MESSAGES = 60
+const VIRTUAL_OVERSCAN_PX = 960
+const ESTIMATED_PENDING_REQUEST_HEIGHT_PX = 156
 
 let scrollRestoreFrame = 0
+let scrollAnchorRestoreFrame = 0
 let bottomLockFrame = 0
 let bottomLockFramesLeft = 0
+let scrollStateEmitFrame = 0
+let pendingScrollStateContainer: HTMLElement | null = null
+let pendingScrollStateForce = false
+let lastGapMeasuredContainer: HTMLElement | null = null
+let lastGapMeasuredViewportHeight = -1
 const trackedPendingImages = new WeakSet<HTMLImageElement>()
 const failedMarkdownImageKeys = ref<Set<string>>(new Set())
+const preparedMessageBlocksById = new Map<string, { text: string; blocks: PreparedMessageBlock[] }>()
 const isFileLinkContextMenuVisible = ref(false)
 const fileLinkContextMenuX = ref(0)
 const fileLinkContextMenuY = ref(0)
 const fileLinkContextBrowseUrl = ref('')
 const fileLinkContextEditUrl = ref('')
+const EMPTY_WORKED_COMMANDS: UiMessage[] = []
+const conversationViewportHeight = ref(0)
+const conversationScrollTop = ref(0)
+const conversationItemGap = ref(0)
+const lastEmittedScrollStateSignature = ref('')
+const measuredMessageHeightById = ref<Record<string, number>>({})
+const measuredPendingRequestHeightById = ref<Record<string, number>>({})
+const observedMessageElementsById = new Map<string, HTMLElement>()
+const observedPendingRequestElementsById = new Map<string, HTMLElement>()
+const itemResizeObserver =
+  typeof ResizeObserver !== 'undefined'
+    ? new ResizeObserver((entries) => {
+      const anchorSnapshot = !shouldLockToBottom() ? captureVisibleConversationAnchor() : null
+      let nextMessageHeights = measuredMessageHeightById.value
+      let nextPendingRequestHeights = measuredPendingRequestHeightById.value
+      let hasMessageHeightChange = false
+      let hasPendingRequestHeightChange = false
+
+      for (const entry of entries) {
+        const target = entry.target
+        if (!(target instanceof HTMLElement)) continue
+        const measureKind = target.dataset.measureKind
+        const measureId = target.dataset.measureId ?? ''
+        if (!measureKind || !measureId) continue
+
+        const nextHeight = Math.max(Math.ceil(target.getBoundingClientRect().height), 1)
+        if (measureKind === 'message') {
+          if (nextMessageHeights[measureId] === nextHeight) continue
+          if (!hasMessageHeightChange) {
+            nextMessageHeights = { ...nextMessageHeights }
+            hasMessageHeightChange = true
+          }
+          nextMessageHeights[measureId] = nextHeight
+          continue
+        }
+
+        if (measureKind === 'request') {
+          if (nextPendingRequestHeights[measureId] === nextHeight) continue
+          if (!hasPendingRequestHeightChange) {
+            nextPendingRequestHeights = { ...nextPendingRequestHeights }
+            hasPendingRequestHeightChange = true
+          }
+          nextPendingRequestHeights[measureId] = nextHeight
+        }
+      }
+
+      if (hasMessageHeightChange) {
+        measuredMessageHeightById.value = nextMessageHeights
+      }
+      if (hasPendingRequestHeightChange) {
+        measuredPendingRequestHeightById.value = nextPendingRequestHeights
+      }
+      if (hasMessageHeightChange || hasPendingRequestHeightChange) {
+        if (shouldLockToBottom()) {
+          scheduleBottomLock(2)
+        } else if (anchorSnapshot) {
+          void scheduleScrollAnchorRestore(anchorSnapshot)
+        }
+      }
+    })
+    : null
+const conversationListResizeObserver =
+  typeof ResizeObserver !== 'undefined'
+    ? new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const target = entry.target
+        if (!(target instanceof HTMLElement)) continue
+        syncConversationViewport(target)
+        if (shouldLockToBottom()) {
+          scheduleBottomLock(2)
+        }
+      }
+    })
+    : null
 const hasRenderableConversation = computed(() => (
   props.messages.length > 0 ||
   props.pendingRequests.length > 0 ||
@@ -524,9 +834,382 @@ const showJumpToLatestButton = computed(() => (
   !showBlockingLoading.value &&
   !shouldLockToBottom()
 ))
+const overlayPrimaryPendingRequest = computed<UiServerRequest | null>(() => props.pendingRequests[0] ?? null)
+const shouldRenderDetailedLiveOverlay = computed<boolean>(() => {
+  const overlay = props.liveOverlay
+  if (!overlay) return false
+  if (overlayPrimaryPendingRequest.value) return true
+  return overlay.errorText.trim().length > 0
+})
+const liveOverlayBehaviorSignature = computed<string>(() => {
+  const overlay = props.liveOverlay
+  if (!overlay) return ''
+  return [
+    overlay.activityLabel.trim(),
+    overlay.errorText.trim(),
+    overlayPrimaryPendingRequest.value?.id ?? '',
+    overlayPrimaryPendingRequest.value?.method ?? '',
+    String(props.pendingRequests.length),
+  ].join('|')
+})
 const jumpToLatestTitle = computed(() => (
   hasPendingBelowFoldUpdates.value ? '跳到最新输出' : '回到底部'
 ))
+const pendingRequestsHeight = computed(() => (
+  props.pendingRequests.reduce((total, request) => (
+    total + (measuredPendingRequestHeightById.value[String(request.id)] ?? ESTIMATED_PENDING_REQUEST_HEIGHT_PX)
+  ), 0) +
+  conversationItemGap.value *
+    (props.pendingRequests.length > 0 && props.messages.length > 0
+      ? props.pendingRequests.length
+      : Math.max(props.pendingRequests.length - 1, 0))
+))
+const workedCommandsByMessageId = computed<Record<string, UiMessage[]>>(() => {
+  const next: Record<string, UiMessage[]> = {}
+  let pendingCommands: UiMessage[] = []
+
+  for (const message of props.messages) {
+    if (message.messageType === 'commandExecution' && message.commandExecution) {
+      pendingCommands.push(message)
+      continue
+    }
+    if (message.messageType === 'worked') {
+      next[message.id] = pendingCommands.length > 0 ? [...pendingCommands] : EMPTY_WORKED_COMMANDS
+      pendingCommands = []
+      continue
+    }
+    if (message.role === 'user') {
+      pendingCommands = []
+    }
+  }
+
+  return next
+})
+const shouldVirtualizeMessages = computed(() => props.messages.length >= VIRTUALIZE_MIN_MESSAGES)
+const virtualizedMessageMetrics = computed(() => {
+  const cumulativeHeights: number[] = [0]
+  for (const message of props.messages) {
+    const height = measuredMessageHeightById.value[message.id] ?? estimateMessageHeight(message)
+    cumulativeHeights.push(cumulativeHeights[cumulativeHeights.length - 1] + height + conversationItemGap.value)
+  }
+
+  const totalHeight = props.messages.length > 0
+    ? Math.max((cumulativeHeights[cumulativeHeights.length - 1] ?? 0) - conversationItemGap.value, 0)
+    : 0
+  if (!shouldVirtualizeMessages.value || props.messages.length === 0) {
+    return {
+      startIndex: 0,
+      endIndex: props.messages.length,
+      cumulativeHeights,
+      totalHeight,
+    }
+  }
+
+  const relativeScrollTop = Math.max(conversationScrollTop.value - pendingRequestsHeight.value, 0)
+  const viewportHeight = Math.max(conversationViewportHeight.value, 1)
+  const visibleStart = Math.max(relativeScrollTop - VIRTUAL_OVERSCAN_PX, 0)
+  const visibleEnd = relativeScrollTop + viewportHeight + VIRTUAL_OVERSCAN_PX
+
+  let startIndex = 0
+  while (
+    startIndex < props.messages.length &&
+    cumulativeHeights[startIndex + 1] < visibleStart
+  ) {
+    startIndex += 1
+  }
+
+  let endIndex = startIndex
+  while (
+    endIndex < props.messages.length &&
+    cumulativeHeights[endIndex] < visibleEnd
+  ) {
+    endIndex += 1
+  }
+
+  endIndex = Math.min(props.messages.length, Math.max(endIndex + 1, startIndex + 1))
+
+  return {
+    startIndex,
+    endIndex,
+    cumulativeHeights,
+    totalHeight,
+  }
+})
+const virtualizedMessages = computed<VirtualizedMessageEntry[]>(() => {
+  const { startIndex, endIndex } = virtualizedMessageMetrics.value
+  return props.messages
+    .slice(startIndex, endIndex)
+    .map((message, index) => ({
+      message,
+      messageIndex: startIndex + index,
+    }))
+})
+const virtualTopSpacerHeight = computed(() => {
+  if (!shouldVirtualizeMessages.value) return 0
+  return Math.max(
+    (virtualizedMessageMetrics.value.cumulativeHeights[virtualizedMessageMetrics.value.startIndex] ?? 0) -
+      conversationItemGap.value,
+    0,
+  )
+})
+const virtualBottomSpacerHeight = computed(() => {
+  if (!shouldVirtualizeMessages.value) return 0
+  const { cumulativeHeights, endIndex, totalHeight } = virtualizedMessageMetrics.value
+  return Math.max(totalHeight - (cumulativeHeights[endIndex] ?? totalHeight), 0)
+})
+
+function measureObservedElementHeight(element: HTMLElement): number {
+  return Math.max(Math.ceil(element.getBoundingClientRect().height), 1)
+}
+
+function captureVisibleConversationAnchor(): ScrollAnchorSnapshot | null {
+  const container = conversationListRef.value
+  if (!container) return null
+  const containerRect = container.getBoundingClientRect()
+  const measuredElements = container.querySelectorAll<HTMLElement>('[data-measure-kind][data-measure-id]')
+
+  for (const element of measuredElements) {
+    const rect = element.getBoundingClientRect()
+    if (rect.bottom <= containerRect.top + 1) continue
+    if (rect.top >= containerRect.bottom) break
+
+    const measureKind = element.dataset.measureKind
+    const measureId = element.dataset.measureId
+    if ((measureKind === 'message' || measureKind === 'request') && measureId) {
+      return {
+        measureKind,
+        measureId,
+        viewportOffset: rect.top - containerRect.top,
+      }
+    }
+  }
+
+  return null
+}
+
+function syncConversationViewport(container: HTMLElement): void {
+  const viewportHeight = container.clientHeight
+  conversationViewportHeight.value = viewportHeight
+  conversationScrollTop.value = container.scrollTop
+  if (lastGapMeasuredContainer === container && lastGapMeasuredViewportHeight === viewportHeight) {
+    return
+  }
+  lastGapMeasuredContainer = container
+  lastGapMeasuredViewportHeight = viewportHeight
+  const style = window.getComputedStyle(container)
+  const gapCandidate = style.rowGap || style.gap
+  const parsedGap = Number.parseFloat(gapCandidate)
+  conversationItemGap.value = Number.isFinite(parsedGap) ? parsedGap : 0
+}
+
+function updateMeasuredHeight(
+  measureKind: 'message' | 'request',
+  measureId: string,
+  height: number,
+): void {
+  if (measureKind === 'message') {
+    if (measuredMessageHeightById.value[measureId] === height) return
+    measuredMessageHeightById.value = {
+      ...measuredMessageHeightById.value,
+      [measureId]: height,
+    }
+    return
+  }
+
+  if (measuredPendingRequestHeightById.value[measureId] === height) return
+  measuredPendingRequestHeightById.value = {
+    ...measuredPendingRequestHeightById.value,
+    [measureId]: height,
+  }
+}
+
+function observeMeasuredElement(
+  measureKind: 'message' | 'request',
+  measureId: string,
+  element: HTMLElement,
+  observedElementsById: Map<string, HTMLElement>,
+): void {
+  const previousElement = observedElementsById.get(measureId)
+  if (previousElement && previousElement !== element) {
+    itemResizeObserver?.unobserve(previousElement)
+  }
+
+  element.dataset.measureKind = measureKind
+  element.dataset.measureId = measureId
+  observedElementsById.set(measureId, element)
+  updateMeasuredHeight(measureKind, measureId, measureObservedElementHeight(element))
+  itemResizeObserver?.observe(element)
+}
+
+function disconnectMeasuredElement(
+  measureId: string,
+  observedElementsById: Map<string, HTMLElement>,
+): void {
+  const previousElement = observedElementsById.get(measureId)
+  if (!previousElement) return
+  itemResizeObserver?.unobserve(previousElement)
+  observedElementsById.delete(measureId)
+}
+
+function pruneMeasuredHeightCache(
+  keepIds: Set<string>,
+  measuredHeightMap: Record<string, number>,
+): Record<string, number> {
+  let nextMeasuredHeightMap: Record<string, number> | null = null
+  for (const [measureId, height] of Object.entries(measuredHeightMap)) {
+    if (keepIds.has(measureId)) continue
+    if (!nextMeasuredHeightMap) {
+      nextMeasuredHeightMap = { ...measuredHeightMap }
+    }
+    delete nextMeasuredHeightMap[measureId]
+  }
+  return nextMeasuredHeightMap ?? measuredHeightMap
+}
+
+function pruneObservedElements(
+  keepIds: Set<string>,
+  observedElementsById: Map<string, HTMLElement>,
+): void {
+  for (const [measureId, element] of observedElementsById.entries()) {
+    if (keepIds.has(measureId)) continue
+    itemResizeObserver?.unobserve(element)
+    observedElementsById.delete(measureId)
+  }
+}
+
+function disconnectAllObservedElements(observedElementsById: Map<string, HTMLElement>): void {
+  for (const element of observedElementsById.values()) {
+    itemResizeObserver?.unobserve(element)
+  }
+  observedElementsById.clear()
+}
+
+function pruneMeasuredMessageHeights(messages: UiMessage[]): void {
+  const keepIds = new Set(messages.map((message) => message.id))
+  measuredMessageHeightById.value = pruneMeasuredHeightCache(keepIds, measuredMessageHeightById.value)
+  pruneObservedElements(keepIds, observedMessageElementsById)
+}
+
+function pruneMeasuredPendingRequestHeights(requests: UiServerRequest[]): void {
+  const keepIds = new Set(requests.map((request) => String(request.id)))
+  measuredPendingRequestHeightById.value = pruneMeasuredHeightCache(keepIds, measuredPendingRequestHeightById.value)
+  pruneObservedElements(keepIds, observedPendingRequestElementsById)
+}
+
+function setMessageMeasureRef(messageId: string, element: MeasureRefTarget): void {
+  const measuredElement = toMeasuredElement(element)
+  if (!measuredElement) {
+    disconnectMeasuredElement(messageId, observedMessageElementsById)
+    return
+  }
+  observeMeasuredElement('message', messageId, measuredElement, observedMessageElementsById)
+}
+
+function toMeasuredElement(target: MeasureRefTarget): HTMLElement | null {
+  if (target instanceof HTMLElement) return target
+  if (target && '$el' in target) {
+    const element = target.$el
+    return element instanceof HTMLElement ? element : null
+  }
+  return null
+}
+
+function setPendingRequestMeasureRef(requestId: number, element: MeasureRefTarget): void {
+  const measureId = String(requestId)
+  const measuredElement = toMeasuredElement(element)
+  if (!measuredElement) {
+    disconnectMeasuredElement(measureId, observedPendingRequestElementsById)
+    return
+  }
+  observeMeasuredElement('request', measureId, measuredElement, observedPendingRequestElementsById)
+}
+
+function restoreScrollAnchor(snapshot: ScrollAnchorSnapshot): boolean {
+  if (shouldLockToBottom()) return false
+  const container = conversationListRef.value
+  if (!container) return false
+
+  const observedElementsById =
+    snapshot.measureKind === 'message'
+      ? observedMessageElementsById
+      : observedPendingRequestElementsById
+  const element = observedElementsById.get(snapshot.measureId)
+  if (!element) return false
+
+  const containerRect = container.getBoundingClientRect()
+  const nextViewportOffset = element.getBoundingClientRect().top - containerRect.top
+  const scrollDelta = nextViewportOffset - snapshot.viewportOffset
+  if (Math.abs(scrollDelta) < 1) {
+    syncConversationViewport(container)
+    return true
+  }
+
+  const maxScrollTop = Math.max(container.scrollHeight - container.clientHeight, 0)
+  container.scrollTop = Math.min(Math.max(container.scrollTop + scrollDelta, 0), maxScrollTop)
+  syncConversationViewport(container)
+  scheduleEmitScrollState(container)
+  return true
+}
+
+async function scheduleScrollAnchorRestore(snapshot: ScrollAnchorSnapshot | null): Promise<boolean> {
+  if (!snapshot) return false
+  await nextTick()
+  if (scrollAnchorRestoreFrame) {
+    cancelAnimationFrame(scrollAnchorRestoreFrame)
+  }
+
+  return await new Promise<boolean>((resolve) => {
+    scrollAnchorRestoreFrame = requestAnimationFrame(() => {
+      scrollAnchorRestoreFrame = 0
+      resolve(restoreScrollAnchor(snapshot))
+    })
+  })
+}
+
+function estimateTextHeight(text: string, pixelsPerLine = 22, charsPerLine = 54): number {
+  const normalized = text.trim()
+  if (!normalized) return 0
+  const lineCount = normalized.split(/\r?\n/u).length
+  const wrappedLineCount = Math.ceil(normalized.length / charsPerLine)
+  return Math.max(Math.max(lineCount, wrappedLineCount), 1) * pixelsPerLine
+}
+
+function estimateMessageHeight(message: UiMessage): number {
+  if (isCommandMessage(message)) {
+    const output = message.commandExecution?.aggregatedOutput ?? ''
+    if (!isCommandExpanded(message)) return 68
+    return Math.min(120 + estimateTextHeight(output, 16, 78), 520)
+  }
+
+  if (message.messageType === 'worked') {
+    if (!isWorkedExpanded(message)) return 64
+    const commandsHeight = getWorkedCommands(message.id).reduce((total, command) => (
+      total + (isCommandExpanded(command) ? 160 : 58)
+    ), 0)
+    return Math.min(84 + commandsHeight, 760)
+  }
+
+  let height = message.role === 'user' ? 74 : 92
+  height += Math.min(estimateTextHeight(message.text), 520)
+
+  const attachmentCount = message.fileAttachments?.length ?? 0
+  if (attachmentCount > 0) {
+    height += 18 + attachmentCount * 32
+  }
+
+  const inlineImageCount = message.images?.length ?? 0
+  const markdownImageCount = (message.text.match(/!\[[^\]]*\]\(([^)\n]+)\)/gu) ?? []).length
+  const imageCount = inlineImageCount + markdownImageCount
+  if (imageCount > 0) {
+    height += imageCount * 196
+  }
+
+  if (canShowMessageActions(message)) {
+    height += 30
+  }
+
+  return Math.min(Math.max(height, 72), 980)
+}
 
 type ParsedToolQuestion = {
   id: string
@@ -1257,6 +1940,40 @@ function parseMessageBlocks(text: string): MessageBlock[] {
   return blocks.length > 0 ? blocks : [{ kind: 'text', value: text }]
 }
 
+function getWorkedCommands(messageId: string): UiMessage[] {
+  return workedCommandsByMessageId.value[messageId] ?? EMPTY_WORKED_COMMANDS
+}
+
+function getPreparedMessageBlocks(message: UiMessage): PreparedMessageBlock[] {
+  const cached = preparedMessageBlocksById.get(message.id)
+  if (cached && cached.text === message.text) {
+    return cached.blocks
+  }
+
+  const blocks = parseMessageBlocks(message.text).map<PreparedMessageBlock>((block) => {
+    if (block.kind === 'text') {
+      return {
+        kind: 'text',
+        value: block.value,
+        segments: parseInlineSegments(block.value),
+      }
+    }
+    return block
+  })
+
+  preparedMessageBlocksById.set(message.id, { text: message.text, blocks })
+  return blocks
+}
+
+function prunePreparedMessageBlockCache(messages: UiMessage[]): void {
+  const keepIds = new Set(messages.map((message) => message.id))
+  for (const messageId of preparedMessageBlocksById.keys()) {
+    if (!keepIds.has(messageId)) {
+      preparedMessageBlocksById.delete(messageId)
+    }
+  }
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -1464,6 +2181,13 @@ function requestMethodLabel(method: string): string {
   }
 }
 
+function isApprovalRequestMethod(method: string): boolean {
+  return (
+    method === 'item/commandExecution/requestApproval' ||
+    method === 'item/fileChange/requestApproval'
+  )
+}
+
 function liveOverlayPrimaryLabel(overlay: UiLiveOverlay): string {
   return overlay.activityLabel.trim() || '思考中'
 }
@@ -1473,10 +2197,48 @@ function liveOverlayDetails(overlay: UiLiveOverlay): string[] {
 }
 
 function liveOverlayHint(overlay: UiLiveOverlay): string {
+  if (overlay.activityLabel.includes('等待确认')) {
+    return '上方有待确认请求，允许或拒绝后会继续执行。'
+  }
+  if (overlay.activityLabel.includes('等待输入')) {
+    return '上方有待补充内容，提交后会继续执行。'
+  }
+  if (overlay.activityLabel.includes('等待处理')) {
+    return '上方有待处理请求，完成后会继续执行。'
+  }
   if (overlay.activityLabel.includes('执行命令')) {
     return '命令仍在运行，输出会持续追加。'
   }
-  return '正在持续处理，保持在底部即可实时看到新进展。'
+  return '处理中，底部会显示最新进展。'
+}
+
+function liveOverlayCompactHint(overlay: UiLiveOverlay): string {
+  if (overlay.activityLabel.includes('执行命令')) {
+    return '命令仍在执行，可先查看上方历史，新输出会继续追加。'
+  }
+  if (overlay.activityLabel.includes('思考')) {
+    return '正在整理回复，完成后会自动停在最新内容。'
+  }
+  return '正在处理，界面会自动继续更新。'
+}
+
+function scrollToPendingRequests(): void {
+  const container = conversationListRef.value
+  if (!container) return
+  clearBelowFoldUpdates()
+  autoFollowBottom.value = false
+  const firstPendingRequest = container.querySelector('[data-pending-request-id]')
+  if (firstPendingRequest instanceof HTMLElement) {
+    firstPendingRequest.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    })
+    return
+  }
+  container.scrollTo({
+    top: 0,
+    behavior: 'smooth',
+  })
 }
 
 async function onCopyMessage(message: UiMessage): Promise<void> {
@@ -1508,10 +2270,8 @@ function onRollback(message: UiMessage): void {
 
 function scrollToBottom(): void {
   const container = conversationListRef.value
-  const anchor = bottomAnchorRef.value
-  if (!container || !anchor) return
+  if (!container) return
   container.scrollTop = container.scrollHeight
-  anchor.scrollIntoView({ block: 'end' })
 }
 
 function isAtBottom(container: HTMLElement): boolean {
@@ -1519,10 +2279,31 @@ function isAtBottom(container: HTMLElement): boolean {
   return distance <= BOTTOM_THRESHOLD_PX
 }
 
-function emitScrollState(container: HTMLElement): void {
+function flushScrollState(): void {
+  scrollStateEmitFrame = 0
+  const container = pendingScrollStateContainer
+  const force = pendingScrollStateForce
+  pendingScrollStateContainer = null
+  pendingScrollStateForce = false
+  if (!container) return
+  emitScrollState(container, force)
+}
+
+function emitScrollState(container: HTMLElement, force = false): void {
   if (!props.activeThreadId) return
+  syncConversationViewport(container)
   const maxScrollTop = Math.max(container.scrollHeight - container.clientHeight, 0)
   const scrollRatio = maxScrollTop > 0 ? Math.min(Math.max(container.scrollTop / maxScrollTop, 0), 1) : 1
+  const nextSignature = [
+    props.activeThreadId,
+    String(Math.round(container.scrollTop / 24)),
+    isAtBottom(container) ? '1' : '0',
+    String(Math.round(scrollRatio * 100)),
+  ].join(':')
+  if (!force && nextSignature === lastEmittedScrollStateSignature.value) {
+    return
+  }
+  lastEmittedScrollStateSignature.value = nextSignature
   emit('updateScrollState', {
     threadId: props.activeThreadId,
     state: {
@@ -1531,6 +2312,17 @@ function emitScrollState(container: HTMLElement): void {
       scrollRatio,
     },
   })
+}
+
+function scheduleEmitScrollState(container: HTMLElement, force = false): void {
+  if (typeof window === 'undefined') {
+    emitScrollState(container, force)
+    return
+  }
+  pendingScrollStateContainer = container
+  pendingScrollStateForce = pendingScrollStateForce || force
+  if (scrollStateEmitFrame) return
+  scrollStateEmitFrame = requestAnimationFrame(flushScrollState)
 }
 
 function markBelowFoldUpdate(): void {
@@ -1545,6 +2337,7 @@ function clearBelowFoldUpdates(): void {
 function applySavedScrollState(): void {
   const container = conversationListRef.value
   if (!container) return
+  syncConversationViewport(container)
 
   const savedState = props.scrollState
   if (!savedState || savedState.isAtBottom) {
@@ -1560,7 +2353,8 @@ function applySavedScrollState(): void {
       ? savedState.scrollRatio * maxScrollTop
       : savedState.scrollTop
   container.scrollTop = Math.min(Math.max(targetScrollTop, 0), maxScrollTop)
-  emitScrollState(container)
+  syncConversationViewport(container)
+  scheduleEmitScrollState(container, true)
 }
 
 function enforceBottomState(): void {
@@ -1568,7 +2362,8 @@ function enforceBottomState(): void {
   if (!container) return
   autoFollowBottom.value = true
   scrollToBottom()
-  emitScrollState(container)
+  syncConversationViewport(container)
+  scheduleEmitScrollState(container)
   clearBelowFoldUpdates()
 }
 
@@ -1621,6 +2416,7 @@ function bindPendingImageHandlers(): void {
 }
 
 async function scheduleScrollRestore(forceBottom = shouldLockToBottom()): Promise<void> {
+  const anchorSnapshot = forceBottom ? null : captureVisibleConversationAnchor()
   await nextTick()
   if (scrollRestoreFrame) {
     cancelAnimationFrame(scrollRestoreFrame)
@@ -1630,7 +2426,10 @@ async function scheduleScrollRestore(forceBottom = shouldLockToBottom()): Promis
     if (forceBottom) {
       enforceBottomState()
     } else {
-      applySavedScrollState()
+      const didRestoreAnchor = anchorSnapshot ? restoreScrollAnchor(anchorSnapshot) : false
+      if (!didRestoreAnchor) {
+        applySavedScrollState()
+      }
     }
     bindPendingImageHandlers()
     if (forceBottom) {
@@ -1642,7 +2441,9 @@ async function scheduleScrollRestore(forceBottom = shouldLockToBottom()): Promis
 watch(
   () => props.messages,
   async (next, previous) => {
+    syncObservedCommandStartTimes(next)
     if (props.isLoading) return
+    const previousMessages = previous ?? EMPTY_WORKED_COMMANDS
     const shouldFollowBottom = shouldLockToBottom()
 
     for (const m of next) {
@@ -1655,6 +2456,25 @@ watch(
       prevCommandStatuses.value[m.id] = cur
     }
 
+    prunePreparedMessageBlockCache(next)
+    pruneMeasuredMessageHeights(next)
+
+    if (previousMessages.length > 0 && !shouldFollowBottom) {
+      markBelowFoldUpdate()
+    }
+
+    await scheduleScrollRestore(shouldFollowBottom)
+  },
+  { immediate: true },
+)
+
+watch(
+  () => props.pendingRequests,
+  async (next, previous) => {
+    if (props.isLoading) return
+    const shouldFollowBottom = shouldLockToBottom()
+    pruneMeasuredPendingRequestHeights(next)
+
     if (previous.length > 0 && !shouldFollowBottom) {
       markBelowFoldUpdate()
     }
@@ -1664,9 +2484,9 @@ watch(
 )
 
 watch(
-  () => props.liveOverlay,
-  async (overlay) => {
-    if (!overlay) return
+  liveOverlayBehaviorSignature,
+  async (signature) => {
+    if (!signature) return
     const shouldFollowBottom = shouldLockToBottom()
     if (!shouldFollowBottom) {
       markBelowFoldUpdate()
@@ -1693,6 +2513,15 @@ watch(
     modalImageUrl.value = ''
     closeFileLinkContextMenu()
     failedMarkdownImageKeys.value = new Set()
+    preparedMessageBlocksById.clear()
+    disconnectAllObservedElements(observedMessageElementsById)
+    disconnectAllObservedElements(observedPendingRequestElementsById)
+    measuredMessageHeightById.value = {}
+    measuredPendingRequestHeightById.value = {}
+    conversationScrollTop.value = 0
+    lastGapMeasuredContainer = null
+    lastGapMeasuredViewportHeight = -1
+    lastEmittedScrollStateSignature.value = ''
     clearBelowFoldUpdates()
     autoFollowBottom.value = props.scrollState?.isAtBottom !== false
   },
@@ -1719,11 +2548,25 @@ watch(isFileLinkContextMenuVisible, (isVisible) => {
   window.removeEventListener('keydown', onWindowKeydownForFileLinkContextMenu)
 })
 
+watch(
+  conversationListRef,
+  (nextElement, previousElement) => {
+    if (previousElement) {
+      conversationListResizeObserver?.unobserve(previousElement)
+    }
+    if (!nextElement) return
+    syncConversationViewport(nextElement)
+    conversationListResizeObserver?.observe(nextElement)
+  },
+  { flush: 'post' },
+)
+
 function onConversationScroll(): void {
   const container = conversationListRef.value
   if (!container || props.isLoading) return
+  syncConversationViewport(container)
   autoFollowBottom.value = isAtBottom(container)
-  emitScrollState(container)
+  scheduleEmitScrollState(container)
   if (isAtBottom(container)) {
     clearBelowFoldUpdates()
   }
@@ -1766,19 +2609,30 @@ function alignLiveOverlayReasoningToBottom(): void {
 watch(
   () => props.liveOverlay?.reasoningText,
   async (reasoningText) => {
-    if (!reasoningText) return
+    if (!reasoningText || !shouldRenderDetailedLiveOverlay.value) return
     await nextTick()
     alignLiveOverlayReasoningToBottom()
   },
 )
 
 onBeforeUnmount(() => {
+  stopCommandElapsedTimer()
   if (scrollRestoreFrame) {
     cancelAnimationFrame(scrollRestoreFrame)
+  }
+  if (scrollAnchorRestoreFrame) {
+    cancelAnimationFrame(scrollAnchorRestoreFrame)
   }
   if (bottomLockFrame) {
     cancelAnimationFrame(bottomLockFrame)
   }
+  if (scrollStateEmitFrame) {
+    cancelAnimationFrame(scrollStateEmitFrame)
+  }
+  conversationListResizeObserver?.disconnect()
+  itemResizeObserver?.disconnect()
+  disconnectAllObservedElements(observedMessageElementsById)
+  disconnectAllObservedElements(observedPendingRequestElementsById)
   window.removeEventListener('pointerdown', onWindowPointerDownForFileLinkContextMenu, { capture: true })
   window.removeEventListener('blur', onWindowBlurForFileLinkContextMenu)
   window.removeEventListener('keydown', onWindowKeydownForFileLinkContextMenu)
@@ -1793,7 +2647,7 @@ onBeforeUnmount(() => {
 }
 
 .conversation-loading {
-  @apply flex flex-col gap-2.5 px-2 sm:px-5 py-2.5;
+  @apply flex flex-col gap-2 px-2 sm:px-5 py-2;
 }
 
 .conversation-loading-kicker {
@@ -1801,7 +2655,7 @@ onBeforeUnmount(() => {
 }
 
 .conversation-loading-card {
-  @apply block max-w-[min(72ch,100%)] rounded-[26px] border border-[#ece5d8] bg-white/90 px-4 py-4 shadow-[0_10px_26px_-22px_rgba(31,41,55,0.55)];
+  @apply block max-w-[min(72ch,100%)] rounded-[24px] border border-[#ece5d8] bg-white/92 px-4 py-3.5 shadow-[0_8px_18px_-24px_rgba(31,41,55,0.35)];
   position: relative;
   overflow: hidden;
 }
@@ -1811,12 +2665,7 @@ onBeforeUnmount(() => {
 }
 
 .conversation-loading-card::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.7) 50%, rgba(255,255,255,0) 100%);
-  transform: translateX(-100%);
-  animation: conversation-skeleton-sweep 1.25s ease-in-out infinite;
+  display: none;
 }
 
 .conversation-loading-line {
@@ -1844,22 +2693,21 @@ onBeforeUnmount(() => {
 }
 
 .conversation-inline-loading {
-  @apply sticky top-0 z-10 mx-2 sm:mx-5 mb-1.5 mt-1.5 flex items-center gap-2.5 rounded-full border border-[#ddd5c7] bg-[#fffcf7]/94 px-3 py-1.5 text-xs text-[#7b7062] shadow-sm backdrop-blur;
+  @apply sticky top-0 z-10 mx-2 sm:mx-5 mb-1.5 mt-1.5 flex items-center gap-2 rounded-full border border-[#ddd5c7] bg-[#fffcf7]/96 px-3 py-1.5 text-xs text-[#7b7062] backdrop-blur;
 }
 
 .conversation-inline-loading-bar {
-  @apply block h-1.5 w-20 overflow-hidden rounded-full bg-[#ece4d6];
+  @apply block h-1.5 w-12 overflow-hidden rounded-full bg-[#e5ded2];
   position: relative;
 }
 
 .conversation-inline-loading-bar::after {
   content: '';
   position: absolute;
-  inset: 0;
-  width: 42%;
+  inset: 0 auto 0 0;
+  width: 40%;
   border-radius: 9999px;
   background: linear-gradient(90deg, rgba(15, 118, 110, 0.15) 0%, rgba(15, 118, 110, 0.95) 100%);
-  animation: conversation-loading-slide 1.1s ease-in-out infinite;
 }
 
 .conversation-inline-loading-text {
@@ -1867,12 +2715,14 @@ onBeforeUnmount(() => {
 }
 
 .conversation-list {
-  @apply h-full min-h-0 list-none m-0 px-2 sm:px-5 py-0 overflow-y-auto overflow-x-visible flex flex-col gap-2.5 sm:gap-3;
+  @apply h-full min-h-0 list-none m-0 px-2 sm:px-5 py-0 overflow-y-auto overflow-x-visible flex flex-col gap-1 sm:gap-1.5;
   padding-bottom: max(0.875rem, env(safe-area-inset-bottom));
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .conversation-jump-to-latest {
-  @apply absolute bottom-4 right-4 z-20 inline-flex items-center gap-2 rounded-full border border-[#d8cfbf] bg-[#fffdf8]/96 px-3 py-2 text-xs font-semibold text-[#544a3d] shadow-lg shadow-[#1f2937]/10 backdrop-blur transition hover:-translate-y-0.5 hover:border-[#bca98d] hover:text-[#1f2937];
+  @apply absolute bottom-4 right-4 z-20 inline-flex items-center gap-2 rounded-full border border-[#d8cfbf] bg-[#fffdf8]/96 px-3 py-2 text-xs font-semibold text-[#544a3d] shadow-md shadow-[#1f2937]/5 backdrop-blur hover:border-[#bca98d] hover:text-[#1f2937];
   bottom: max(1rem, calc(env(safe-area-inset-bottom) + 0.5rem));
 }
 
@@ -1893,28 +2743,12 @@ onBeforeUnmount(() => {
   @apply h-2.5 w-2.5 rounded-full bg-blue-500 shadow-[0_0_0_4px_rgba(59,130,246,0.16)];
 }
 
-@keyframes conversation-loading-slide {
-  0% {
-    transform: translateX(-120%);
-  }
-
-  100% {
-    transform: translateX(220%);
-  }
-}
-
-@keyframes conversation-skeleton-sweep {
-  0% {
-    transform: translateX(-100%);
-  }
-
-  100% {
-    transform: translateX(100%);
-  }
-}
-
 .conversation-item {
   @apply m-0 w-full flex;
+}
+
+.conversation-spacer {
+  @apply m-0 w-full flex-none p-0 pointer-events-none;
 }
 
 .conversation-item-request {
@@ -1967,7 +2801,7 @@ onBeforeUnmount(() => {
 }
 
 .request-button {
-  @apply rounded-xl border border-[#e2c486] bg-white px-3 py-1.5 text-xs text-[#7d4911] hover:bg-[#fff0c9] transition;
+  @apply rounded-xl border border-[#e2c486] bg-white px-3 py-1.5 text-xs text-[#7d4911] hover:bg-[#fff0c9];
 }
 
 .request-button-primary {
@@ -1999,33 +2833,55 @@ onBeforeUnmount(() => {
 }
 
 .live-overlay-inline {
-  @apply w-full max-w-180 rounded-[24px] border border-[#cfe6e0] bg-[#f4fbf9] px-3.5 py-2.5 flex flex-col gap-1.5 shadow-[0_10px_26px_-22px_rgba(15,118,110,0.45)];
+  @apply w-full max-w-180 rounded-[22px] border border-[#cfe6e0] bg-[#f6fbfa] px-3.5 py-2.5 flex flex-col gap-1.5 shadow-[0_8px_18px_-24px_rgba(15,118,110,0.28)];
+}
+
+.live-overlay-inline-compact {
+  @apply max-w-132 rounded-[18px] px-3 py-2 shadow-[0_6px_14px_-22px_rgba(15,118,110,0.22)];
 }
 
 .live-overlay-head {
-  @apply flex items-center gap-2.5;
+  @apply flex items-center gap-2;
 }
 
 .live-overlay-indicator {
-  @apply relative flex h-8 w-8 items-center justify-center rounded-full bg-[#dcf1ec] shrink-0;
+  @apply relative flex h-7 w-7 items-center justify-center rounded-full border border-[#cfe6e0] bg-white shrink-0;
 }
 
 .live-overlay-indicator-ring {
-  @apply absolute inset-0 rounded-full border border-[#72c8ba];
-  animation: live-overlay-pulse-ring 1.7s ease-out infinite;
+  display: none;
 }
 
 .live-overlay-indicator-core {
-  @apply block h-2.5 w-2.5 rounded-full bg-[#0f766e];
-  animation: live-overlay-pulse-core 1.2s ease-in-out infinite;
+  @apply block h-2 w-2 rounded-full bg-[#0f766e];
 }
 
 .live-overlay-heading {
   @apply min-w-0 flex flex-col gap-0.5;
 }
 
+.live-overlay-compact-main {
+  @apply flex items-center gap-2.5;
+}
+
+.live-overlay-compact-copy {
+  @apply min-w-0 flex-1 flex flex-col gap-0.5;
+}
+
+.live-overlay-compact-head {
+  @apply flex items-center gap-2;
+}
+
+.live-overlay-inline-compact .live-overlay-indicator {
+  @apply h-6 w-6;
+}
+
 .live-overlay-label {
-  @apply m-0 text-[11px] uppercase tracking-[0.14em] font-semibold text-[#0f766e];
+  @apply m-0 text-[11px] uppercase tracking-[0.08em] font-semibold text-[#0f766e];
+}
+
+.live-overlay-compact-label {
+  @apply m-0 text-sm font-semibold text-[#1b4d47];
 }
 
 .live-overlay-dots {
@@ -2033,16 +2889,16 @@ onBeforeUnmount(() => {
 }
 
 .live-overlay-dot {
-  @apply h-1.5 w-1.5 rounded-full bg-[#0f766e]/50;
-  animation: live-overlay-dot-bounce 1.1s ease-in-out infinite;
+  @apply h-1.5 w-1.5 rounded-full bg-[#0f766e];
+  opacity: 0.28;
 }
 
 .live-overlay-dot:nth-child(2) {
-  animation-delay: 120ms;
+  opacity: 0.52;
 }
 
 .live-overlay-dot:nth-child(3) {
-  animation-delay: 240ms;
+  opacity: 0.78;
 }
 
 .live-overlay-detail-list {
@@ -2055,6 +2911,30 @@ onBeforeUnmount(() => {
 
 .live-overlay-hint {
   @apply m-0 text-sm leading-5 text-[#5b756f];
+}
+
+.live-overlay-compact-hint {
+  @apply m-0 text-[12px] leading-4 text-[#6b8a84];
+}
+
+.live-overlay-request-link {
+  @apply inline-flex w-fit items-center rounded-full border border-[#c8ddd8] bg-white px-3 py-1.5 text-xs font-semibold text-[#0f766e] shadow-sm transition-colors hover:border-[#97c2b8] hover:text-[#0b5e58];
+}
+
+.live-overlay-actions {
+  @apply flex flex-wrap gap-1.5 sm:gap-2;
+}
+
+.live-overlay-action {
+  @apply rounded-xl border border-[#c8ddd8] bg-white px-3 py-1.5 text-xs font-semibold text-[#0f766e] shadow-sm transition-colors hover:border-[#97c2b8] hover:text-[#0b5e58];
+}
+
+.live-overlay-action-primary {
+  @apply border-[#0f766e] bg-[#0f766e] text-white hover:border-[#0b5e58] hover:bg-[#0b5e58] hover:text-white;
+}
+
+.live-overlay-request-count {
+  @apply m-0 text-xs leading-4 text-[#6b8a84];
 }
 
 .live-overlay-reasoning {
@@ -2073,40 +2953,6 @@ onBeforeUnmount(() => {
 
 .live-overlay-error {
   @apply m-0 text-sm leading-5 text-[#c2410c] whitespace-pre-wrap;
-}
-
-@keyframes live-overlay-pulse-ring {
-  0% {
-    transform: scale(0.86);
-    opacity: 0.75;
-  }
-
-  100% {
-    transform: scale(1.24);
-    opacity: 0;
-  }
-}
-
-@keyframes live-overlay-pulse-core {
-  0%, 100% {
-    transform: scale(0.94);
-  }
-
-  50% {
-    transform: scale(1.08);
-  }
-}
-
-@keyframes live-overlay-dot-bounce {
-  0%, 80%, 100% {
-    transform: translateY(0);
-    opacity: 0.38;
-  }
-
-  40% {
-    transform: translateY(-2px);
-    opacity: 1;
-  }
 }
 
 .message-body {
@@ -2132,7 +2978,7 @@ onBeforeUnmount(() => {
 }
 
 .message-image-button {
-  @apply block rounded-2xl overflow-hidden border border-[#ddd5c7] bg-white p-0 transition hover:border-[#bca98d];
+  @apply block rounded-2xl overflow-hidden border border-[#ddd5c7] bg-white p-0 hover:border-[#bca98d];
 }
 
 .message-image-preview {
@@ -2302,7 +3148,7 @@ onBeforeUnmount(() => {
 }
 
 .message-action-button {
-  @apply opacity-0 inline-flex items-center gap-1 self-start rounded-full border border-[#ddd5c7] bg-[#fffcf7] px-2.5 py-1 text-xs text-[#7b7062] transition hover:bg-[#f1ebde] hover:text-[#544a3d] hover:border-[#cdbfa9];
+  @apply opacity-0 inline-flex items-center gap-1 self-start rounded-full border border-[#ddd5c7] bg-[#fffcf7] px-2.5 py-1 text-xs text-[#7b7062] transition-colors duration-100 hover:bg-[#f1ebde] hover:text-[#544a3d] hover:border-[#cdbfa9];
 }
 
 .message-action-icon {
@@ -2314,7 +3160,7 @@ onBeforeUnmount(() => {
 }
 
 .cmd-row {
-  @apply w-full flex items-center gap-1.5 px-2.5 py-1.5 rounded-[16px] border border-[#ddd5c7] bg-[#f8f4ec] cursor-pointer transition text-left hover:bg-[#f1ebde];
+  @apply w-full flex items-center gap-1.5 px-2.5 py-1.5 rounded-[16px] border border-[#ddd5c7] bg-[#f8f4ec] cursor-pointer transition-colors duration-100 text-left hover:bg-[#f1ebde];
   overflow-x: auto;
   overflow-y: hidden;
   white-space: nowrap;
@@ -2327,7 +3173,7 @@ onBeforeUnmount(() => {
 }
 
 .cmd-chevron {
-  @apply text-[10px] text-[#8f8577] transition-transform duration-150 flex-shrink-0;
+  @apply text-[10px] text-[#8f8577] transition-transform duration-100 flex-shrink-0;
 }
 
 .cmd-chevron-open {
@@ -2342,6 +3188,10 @@ onBeforeUnmount(() => {
 
 .cmd-status {
   @apply text-[11px] font-medium flex-shrink-0;
+}
+
+.cmd-duration {
+  @apply text-[11px] text-[#7b7062] flex-shrink-0;
 }
 
 .cmd-status-running .cmd-status {
@@ -2360,7 +3210,7 @@ onBeforeUnmount(() => {
   @apply rounded-b-lg bg-zinc-900;
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows 300ms ease-out, border-color 300ms ease-out;
+  transition: grid-template-rows 160ms ease-out;
   border: 1px solid transparent;
   border-top: none;
 }
@@ -2387,5 +3237,17 @@ onBeforeUnmount(() => {
   overflow-wrap: normal;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-x;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversation-inline-loading-bar::after,
+  .message-action-button,
+  .cmd-row,
+  .cmd-chevron,
+  .worked-chevron,
+  .cmd-output-wrap {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 </style>

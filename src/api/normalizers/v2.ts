@@ -145,13 +145,14 @@ function toUiMessages(item: ThreadItem): UiMessage[] {
     const cwd = typeof raw.cwd === 'string' ? raw.cwd : null
     const aggregatedOutput = typeof raw.aggregatedOutput === 'string' ? raw.aggregatedOutput : ''
     const exitCode = typeof raw.exitCode === 'number' ? raw.exitCode : null
+    const durationMs = typeof raw.durationMs === 'number' && Number.isFinite(raw.durationMs) ? Math.max(0, raw.durationMs) : null
     return [
       {
         id: item.id,
         role: 'system' as const,
         text: cmd,
         messageType: 'commandExecution',
-        commandExecution: { command: cmd, cwd, status, aggregatedOutput, exitCode },
+        commandExecution: { command: cmd, cwd, status, aggregatedOutput, exitCode, durationMs, startedAtMs: null },
       },
     ]
   }

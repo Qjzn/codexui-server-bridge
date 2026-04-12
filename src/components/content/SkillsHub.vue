@@ -114,7 +114,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import IconTablerSearch from '../icons/IconTablerSearch.vue'
 import IconTablerChevronRight from '../icons/IconTablerChevronRight.vue'
 import SkillCard from './SkillCard.vue'
@@ -141,7 +141,9 @@ const toast = ref<{ text: string; type: 'success' | 'error' } | null>(null)
 const actionSkillKey = ref('')
 const isInstallActionInFlight = ref(false)
 const isUninstallActionInFlight = ref(false)
+const SYNC_STATUS_REFRESH_INTERVAL_MS = 8000
 let toastTimer: ReturnType<typeof setTimeout> | null = null
+let syncStatusTimer: number | null = null
 
 const emit = defineEmits<{
   'skills-changed': []
@@ -369,7 +371,39 @@ const {
 onMounted(() => {
   void fetchSkills('')
   void loadSyncStatus()
+  if (typeof window !== 'undefined') {
+    syncStatusTimer = window.setInterval(() => {
+      void loadSyncStatus()
+    }, SYNC_STATUS_REFRESH_INTERVAL_MS)
+    window.addEventListener('focus', onWindowFocus)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+  }
 })
+
+onBeforeUnmount(() => {
+  if (toastTimer) {
+    clearTimeout(toastTimer)
+    toastTimer = null
+  }
+  if (syncStatusTimer) {
+    clearInterval(syncStatusTimer)
+    syncStatusTimer = null
+  }
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('focus', onWindowFocus)
+    document.removeEventListener('visibilitychange', onVisibilityChange)
+  }
+})
+
+function onWindowFocus(): void {
+  void loadSyncStatus()
+}
+
+function onVisibilityChange(): void {
+  if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+    void loadSyncStatus()
+  }
+}
 </script>
 
 <style scoped>

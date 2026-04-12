@@ -1,4 +1,5 @@
 import {
+  type RpcConnectionState,
   fetchRpcMethodCatalog,
   fetchRpcNotificationCatalog,
   fetchPendingServerRequests,
@@ -16,7 +17,7 @@ import type {
   ThreadReadResponse,
   Turn,
 } from './appServerDtos'
-import { normalizeCodexApiError } from './codexErrors'
+import { isAbortLikeError, normalizeCodexApiError } from './codexErrors'
 import {
   readActiveTurnIdFromResponse,
   normalizeThreadGroupsV2,
@@ -31,6 +32,8 @@ type CurrentModelConfig = {
   reasoningEffort: ReasoningEffort | ''
   speedMode: SpeedMode
 }
+
+type RpcCallOptions = { signal?: AbortSignal }
 
 export type WorkspaceRootsState = {
   order: string[]
@@ -92,7 +95,9 @@ export type GithubTrendingProject = {
   repo: string
   url: string
   description: string
+  descriptionZh?: string
   language: string
+  languageLabel?: string
   stars: number
 }
 
@@ -123,10 +128,168 @@ function normalizeGithubProjectDescription(fullName: string, rawDescription: str
     .trim()
 }
 
-async function callRpc<T>(method: string, params?: unknown): Promise<T> {
+const GITHUB_PROGRAMMING_LANGUAGE_LABELS: Record<string, string> = {
+  javascript: 'JavaScript',
+  typescript: 'TypeScript',
+  python: 'Python',
+  java: 'Java',
+  go: 'Go',
+  rust: 'Rust',
+  'c++': 'C++',
+  c: 'C',
+  'c#': 'C#',
+  php: 'PHP',
+  ruby: 'Ruby',
+  swift: 'Swift',
+  kotlin: 'Kotlin',
+  dart: 'Dart',
+  scala: 'Scala',
+  shell: 'Shell',
+  html: 'HTML',
+  css: 'CSS',
+  vue: 'Vue',
+  svelte: 'Svelte',
+}
+
+const githubDescriptionTranslationCache = new Map<string, string>()
+const GATEWAY_FETCH_TIMEOUT_MS = 15000
+const GATEWAY_BACKGROUND_FETCH_TIMEOUT_MS = 12000
+const GATEWAY_UPLOAD_FETCH_TIMEOUT_MS = 30000
+
+function hasCjkCharacters(value: string): boolean {
+  return /[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]/u.test(value)
+}
+
+function shouldTranslateGithubDescription(value: string): boolean {
+  const description = value.trim()
+  if (!description) return false
+  if (hasCjkCharacters(description)) return false
+  return /[A-Za-z]/u.test(description)
+}
+
+function localizeGithubProgrammingLanguage(language: string): string {
+  const normalized = language.trim()
+  if (!normalized) return ''
+  return GITHUB_PROGRAMMING_LANGUAGE_LABELS[normalized.toLowerCase()] ?? normalized
+}
+
+async function localizeGithubProjectsForUi(projects: GithubTrendingProject[]): Promise<GithubTrendingProject[]> {
+  if (projects.length === 0) return []
+
+  const uniqueDescriptions: string[] = []
+  for (const project of projects) {
+    const description = project.description.trim()
+    if (!shouldTranslateGithubDescription(description)) continue
+    if (githubDescriptionTranslationCache.has(description)) continue
+    if (uniqueDescriptions.includes(description)) continue
+    uniqueDescriptions.push(description)
+  }
+
+  if (uniqueDescriptions.length > 0) {
+    try {
+      const response = await fetchWithTimeout('/codex-api/github-trending/translate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          descriptions: uniqueDescriptions,
+        }),
+      }, {
+        timeoutMs: GATEWAY_BACKGROUND_FETCH_TIMEOUT_MS,
+        label: 'GitHub trending translation request',
+      })
+
+      const payload = (await response.json()) as unknown
+      const record =
+        payload && typeof payload === 'object' && !Array.isArray(payload)
+          ? (payload as Record<string, unknown>)
+          : {}
+      const data =
+        record.data && typeof record.data === 'object' && !Array.isArray(record.data)
+          ? (record.data as Record<string, unknown>)
+          : {}
+      const translations = Array.isArray(data.translations) ? data.translations : []
+
+      uniqueDescriptions.forEach((description, index) => {
+        const translated = typeof translations[index] === 'string' ? translations[index].trim() : ''
+        if (translated) {
+          githubDescriptionTranslationCache.set(description, translated)
+        }
+      })
+    } catch {
+      // Fall back to original GitHub descriptions when translation is unavailable.
+    }
+  }
+
+  return projects.map((project) => {
+    const description = project.description.trim()
+    const translatedDescription =
+      shouldTranslateGithubDescription(description)
+        ? (githubDescriptionTranslationCache.get(description) ?? '')
+        : description
+
+    return {
+      ...project,
+      descriptionZh: translatedDescription || undefined,
+      languageLabel: localizeGithubProgrammingLanguage(project.language),
+    }
+  })
+}
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  options: {
+    timeoutMs?: number
+    label?: string
+  } = {},
+): Promise<Response> {
+  const timeoutMs = options.timeoutMs ?? GATEWAY_FETCH_TIMEOUT_MS
+  const controller = new AbortController()
+  const upstreamSignal = init.signal
+  let didTimeout = false
+  const timeoutId = globalThis.setTimeout(() => {
+    didTimeout = true
+    controller.abort()
+  }, timeoutMs)
+
+  const abortFromUpstream = (): void => {
+    controller.abort()
+  }
+
+  if (upstreamSignal) {
+    if (upstreamSignal.aborted) {
+      controller.abort()
+    } else {
+      upstreamSignal.addEventListener('abort', abortFromUpstream, { once: true })
+    }
+  }
+
   try {
-    return await rpcCall<T>(method, params)
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    })
   } catch (error) {
+    if (didTimeout || (error instanceof Error && error.name === 'AbortError' && !upstreamSignal?.aborted)) {
+      const requestLabel = options.label?.trim() || 'Request'
+      throw new Error(`${requestLabel} timed out after ${Math.ceil(timeoutMs / 1000)}s`)
+    }
+    throw error
+  } finally {
+    globalThis.clearTimeout(timeoutId)
+    upstreamSignal?.removeEventListener('abort', abortFromUpstream)
+  }
+}
+
+async function callRpc<T>(method: string, params?: unknown, options: RpcCallOptions = {}): Promise<T> {
+  try {
+    return await rpcCall<T>(method, params, options)
+  } catch (error) {
+    if (isAbortLikeError(error)) {
+      throw error
+    }
     throw normalizeCodexApiError(error, `RPC ${method} failed`, method)
   }
 }
@@ -144,28 +307,31 @@ function normalizeSpeedMode(value: unknown): SpeedMode {
     : 'standard'
 }
 
-async function getThreadGroupsV2(): Promise<UiProjectGroup[]> {
+async function getThreadGroupsV2(options: RpcCallOptions = {}): Promise<UiProjectGroup[]> {
   const payload = await callRpc<ThreadListResponse>('thread/list', {
     archived: false,
     limit: 100,
     sortKey: 'updated_at',
-  })
+  }, options)
   return normalizeThreadGroupsV2(payload)
 }
 
-async function getThreadMessagesV2(threadId: string): Promise<UiMessage[]> {
+async function getThreadMessagesV2(threadId: string, options: RpcCallOptions = {}): Promise<UiMessage[]> {
   const payload = await callRpc<ThreadReadResponse>('thread/read', {
     threadId,
     includeTurns: true,
-  })
+  }, options)
   return normalizeThreadMessagesV2(payload)
 }
 
-async function getThreadDetailV2(threadId: string): Promise<{ messages: UiMessage[]; inProgress: boolean; activeTurnId: string }> {
+async function getThreadDetailV2(
+  threadId: string,
+  options: RpcCallOptions = {},
+): Promise<{ messages: UiMessage[]; inProgress: boolean; activeTurnId: string }> {
   const payload = await callRpc<ThreadReadResponse>('thread/read', {
     threadId,
     includeTurns: true,
-  })
+  }, options)
   return {
     messages: normalizeThreadMessagesV2(payload),
     inProgress: readThreadInProgressFromResponse(payload),
@@ -173,26 +339,38 @@ async function getThreadDetailV2(threadId: string): Promise<{ messages: UiMessag
   }
 }
 
-export async function getThreadGroups(): Promise<UiProjectGroup[]> {
+export async function getThreadGroups(options: RpcCallOptions = {}): Promise<UiProjectGroup[]> {
   try {
-    return await getThreadGroupsV2()
+    return await getThreadGroupsV2(options)
   } catch (error) {
+    if (isAbortLikeError(error)) {
+      throw error
+    }
     throw normalizeCodexApiError(error, 'Failed to load thread groups', 'thread/list')
   }
 }
 
-export async function getThreadMessages(threadId: string): Promise<UiMessage[]> {
+export async function getThreadMessages(threadId: string, options: RpcCallOptions = {}): Promise<UiMessage[]> {
   try {
-    return await getThreadMessagesV2(threadId)
+    return await getThreadMessagesV2(threadId, options)
   } catch (error) {
+    if (isAbortLikeError(error)) {
+      throw error
+    }
     throw normalizeCodexApiError(error, `Failed to load thread ${threadId}`, 'thread/read')
   }
 }
 
-export async function getThreadDetail(threadId: string): Promise<{ messages: UiMessage[]; inProgress: boolean; activeTurnId: string }> {
+export async function getThreadDetail(
+  threadId: string,
+  options: RpcCallOptions = {},
+): Promise<{ messages: UiMessage[]; inProgress: boolean; activeTurnId: string }> {
   try {
-    return await getThreadDetailV2(threadId)
+    return await getThreadDetailV2(threadId, options)
   } catch (error) {
+    if (isAbortLikeError(error)) {
+      throw error
+    }
     throw normalizeCodexApiError(error, `Failed to load thread ${threadId}`, 'thread/read')
   }
 }
@@ -205,11 +383,14 @@ export async function getNotificationCatalog(): Promise<string[]> {
   return fetchRpcNotificationCatalog()
 }
 
-export function subscribeCodexNotifications(onNotification: (value: RpcNotification) => void): () => void {
-  return subscribeRpcNotifications(onNotification)
+export function subscribeCodexNotifications(
+  onNotification: (value: RpcNotification) => void,
+  options: { onConnectionStateChange?: (state: RpcConnectionState) => void } = {},
+): () => void {
+  return subscribeRpcNotifications(onNotification, options)
 }
 
-export type { RpcNotification }
+export type { RpcConnectionState, RpcNotification }
 
 export async function replyToServerRequest(
   id: number,
@@ -225,8 +406,8 @@ export async function getPendingServerRequests(): Promise<unknown[]> {
   return fetchPendingServerRequests()
 }
 
-export async function resumeThread(threadId: string): Promise<void> {
-  await callRpc('thread/resume', { threadId })
+export async function resumeThread(threadId: string, options: RpcCallOptions = {}): Promise<void> {
+  await callRpc('thread/resume', { threadId }, options)
 }
 
 export async function archiveThread(threadId: string): Promise<void> {
@@ -458,7 +639,9 @@ function normalizeWorkspaceRootsState(payload: unknown): WorkspaceRootsState {
 }
 
 export async function getWorkspaceRootsState(): Promise<WorkspaceRootsState> {
-  const response = await fetch('/codex-api/workspace-roots-state')
+  const response = await fetchWithTimeout('/codex-api/workspace-roots-state', {}, {
+    label: 'Workspace roots request',
+  })
   const payload = (await response.json()) as unknown
   if (!response.ok) {
     throw new Error('Failed to load workspace roots state')
@@ -471,10 +654,12 @@ export async function getWorkspaceRootsState(): Promise<WorkspaceRootsState> {
 }
 
 export async function createWorktree(sourceCwd: string): Promise<WorktreeCreateResult> {
-  const response = await fetch('/codex-api/worktree/create', {
+  const response = await fetchWithTimeout('/codex-api/worktree/create', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sourceCwd }),
+  }, {
+    label: 'Worktree create request',
   })
   const payload = (await response.json()) as { data?: WorktreeCreateResult; error?: string }
   if (!response.ok || !payload.data) {
@@ -488,10 +673,12 @@ export async function createWorktree(sourceCwd: string): Promise<WorktreeCreateR
 }
 
 export async function autoCommitWorktreeChanges(cwd: string, message: string): Promise<WorktreeAutoCommitResult> {
-  const response = await fetch('/codex-api/worktree/auto-commit', {
+  const response = await fetchWithTimeout('/codex-api/worktree/auto-commit', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ cwd, message }),
+  }, {
+    label: 'Worktree auto-commit request',
   })
   const payload = (await response.json()) as { data?: WorktreeAutoCommitResult; error?: string }
   if (!response.ok || !payload.data) {
@@ -501,10 +688,12 @@ export async function autoCommitWorktreeChanges(cwd: string, message: string): P
 }
 
 export async function rollbackWorktreeToMessage(cwd: string, message: string): Promise<WorktreeRollbackResult> {
-  const response = await fetch('/codex-api/worktree/rollback-to-message', {
+  const response = await fetchWithTimeout('/codex-api/worktree/rollback-to-message', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ cwd, message }),
+  }, {
+    label: 'Worktree rollback request',
   })
   const payload = (await response.json()) as { data?: WorktreeRollbackResult; error?: string }
   if (!response.ok || !payload.data) {
@@ -514,7 +703,9 @@ export async function rollbackWorktreeToMessage(cwd: string, message: string): P
 }
 
 export async function getHomeDirectory(): Promise<string> {
-  const response = await fetch('/codex-api/home-directory')
+  const response = await fetchWithTimeout('/codex-api/home-directory', {}, {
+    label: 'Home directory request',
+  })
   const payload = (await response.json()) as unknown
   if (!response.ok) {
     throw new Error('Failed to load home directory')
@@ -531,10 +722,12 @@ export async function getHomeDirectory(): Promise<string> {
 }
 
 export async function setWorkspaceRootsState(nextState: WorkspaceRootsState): Promise<void> {
-  const response = await fetch('/codex-api/workspace-roots-state', {
+  const response = await fetchWithTimeout('/codex-api/workspace-roots-state', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(nextState),
+  }, {
+    label: 'Workspace roots save request',
   })
   if (!response.ok) {
     throw new Error('Failed to save workspace roots state')
@@ -542,7 +735,7 @@ export async function setWorkspaceRootsState(nextState: WorkspaceRootsState): Pr
 }
 
 export async function openProjectRoot(path: string, options?: { createIfMissing?: boolean; label?: string }): Promise<string> {
-  const response = await fetch('/codex-api/project-root', {
+  const response = await fetchWithTimeout('/codex-api/project-root', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -550,6 +743,8 @@ export async function openProjectRoot(path: string, options?: { createIfMissing?
       createIfMissing: options?.createIfMissing === true,
       label: options?.label ?? '',
     }),
+  }, {
+    label: 'Project root open request',
   })
   const payload = (await response.json()) as unknown
   if (!response.ok) {
@@ -570,7 +765,9 @@ export async function openProjectRoot(path: string, options?: { createIfMissing?
 
 export async function getProjectRootSuggestion(basePath: string): Promise<{ name: string; path: string }> {
   const query = new URLSearchParams({ basePath })
-  const response = await fetch(`/codex-api/project-root-suggestion?${query.toString()}`)
+  const response = await fetchWithTimeout(`/codex-api/project-root-suggestion?${query.toString()}`, {}, {
+    label: 'Project root suggestion request',
+  })
   const payload = (await response.json()) as unknown
   if (!response.ok) {
     const message = getErrorMessageFromPayload(payload, 'Failed to suggest project name')
@@ -593,7 +790,7 @@ export async function getProjectRootSuggestion(basePath: string): Promise<{ name
 export async function searchComposerFiles(cwd: string, query: string, limit = 20): Promise<ComposerFileSuggestion[]> {
   const trimmedCwd = cwd.trim()
   if (!trimmedCwd) return []
-  const response = await fetch('/codex-api/composer-file-search', {
+  const response = await fetchWithTimeout('/codex-api/composer-file-search', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -601,6 +798,8 @@ export async function searchComposerFiles(cwd: string, query: string, limit = 20
       query: query.trim(),
       limit,
     }),
+  }, {
+    label: 'Composer file search request',
   })
   const payload = (await response.json()) as unknown
   if (!response.ok) {
@@ -628,10 +827,13 @@ export async function searchThreads(
   query: string,
   limit = 200,
 ): Promise<ThreadSearchResult> {
-  const response = await fetch('/codex-api/thread-search', {
+  const response = await fetchWithTimeout('/codex-api/thread-search', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query, limit }),
+  }, {
+    timeoutMs: GATEWAY_BACKGROUND_FETCH_TIMEOUT_MS,
+    label: 'Thread search request',
   })
   const payload = (await response.json()) as { data?: ThreadSearchResult; error?: string }
   if (!response.ok) {
@@ -643,12 +845,14 @@ export async function searchThreads(
 export async function configureTelegramBot(
   botToken: string,
 ): Promise<void> {
-  const response = await fetch('/codex-api/telegram/configure-bot', {
+  const response = await fetchWithTimeout('/codex-api/telegram/configure-bot', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       botToken,
     }),
+  }, {
+    label: 'Telegram bot configure request',
   })
   const payload = await response.json()
   if (!response.ok) {
@@ -658,7 +862,10 @@ export async function configureTelegramBot(
 }
 
 export async function getTelegramStatus(): Promise<TelegramStatus> {
-  const response = await fetch('/codex-api/telegram/status')
+  const response = await fetchWithTimeout('/codex-api/telegram/status', {}, {
+    timeoutMs: GATEWAY_BACKGROUND_FETCH_TIMEOUT_MS,
+    label: 'Telegram status request',
+  })
   const payload = await response.json()
   if (!response.ok) {
     const message = getErrorMessageFromPayload(payload, 'Failed to load Telegram status')
@@ -682,7 +889,10 @@ export async function getTelegramStatus(): Promise<TelegramStatus> {
 }
 
 export async function getDesktopAppStatus(): Promise<DesktopAppStatus> {
-  const response = await fetch('/codex-api/desktop-app/status')
+  const response = await fetchWithTimeout('/codex-api/desktop-app/status', {}, {
+    timeoutMs: GATEWAY_BACKGROUND_FETCH_TIMEOUT_MS,
+    label: 'Desktop app status request',
+  })
   const payload = await response.json()
   if (!response.ok) {
     const message = getErrorMessageFromPayload(payload, 'Failed to load desktop app status')
@@ -707,8 +917,10 @@ export async function getDesktopAppStatus(): Promise<DesktopAppStatus> {
 }
 
 export async function refreshDesktopApp(): Promise<DesktopAppRefreshResult> {
-  const response = await fetch('/codex-api/desktop-app/refresh', {
+  const response = await fetchWithTimeout('/codex-api/desktop-app/refresh', {
     method: 'POST',
+  }, {
+    label: 'Desktop app refresh request',
   })
   const payload = await response.json()
   if (!response.ok) {
@@ -749,11 +961,14 @@ export async function getGithubTrendingProjects(limit = 5): Promise<GithubTrendi
     order: 'desc',
     per_page: String(safeLimit),
   })
-  const response = await fetch(`https://api.github.com/search/repositories?${query.toString()}`, {
+  const response = await fetchWithTimeout(`https://api.github.com/search/repositories?${query.toString()}`, {
     headers: {
       Accept: 'application/vnd.github+json',
       'X-GitHub-Api-Version': '2022-11-28',
     },
+  }, {
+    timeoutMs: GATEWAY_BACKGROUND_FETCH_TIMEOUT_MS,
+    label: 'GitHub trending request',
   })
   if (!response.ok) {
     throw new Error(`Failed to fetch GitHub trending projects (${response.status})`)
@@ -787,7 +1002,7 @@ export async function getGithubTrendingProjects(limit = 5): Promise<GithubTrendi
       stars: typeof row.stargazers_count === 'number' ? row.stargazers_count : 0,
     })
   }
-  return projects
+  return await localizeGithubProjectsForUi(projects)
 }
 
 export async function getGithubProjectsForScope(
@@ -807,11 +1022,14 @@ export async function getGithubProjectsForScope(
       order: 'desc',
       per_page: String(safeLimit),
     })
-    const response = await fetch(`https://api.github.com/search/repositories?${query.toString()}`, {
+    const response = await fetchWithTimeout(`https://api.github.com/search/repositories?${query.toString()}`, {
       headers: {
         Accept: 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
       },
+    }, {
+      timeoutMs: GATEWAY_BACKGROUND_FETCH_TIMEOUT_MS,
+      label: 'GitHub search request',
     })
     if (!response.ok) {
       throw new Error(`Failed to fetch GitHub search projects (${response.status})`)
@@ -845,7 +1063,7 @@ export async function getGithubProjectsForScope(
         stars: typeof row.stargazers_count === 'number' ? row.stargazers_count : 0,
       })
     }
-    return projects
+    return await localizeGithubProjectsForUi(projects)
   }
 
   const since =
@@ -855,7 +1073,10 @@ export async function getGithubProjectsForScope(
         ? 'weekly'
         : 'monthly'
   const query = new URLSearchParams({ since, limit: String(safeLimit) })
-  const response = await fetch(`/codex-api/github-trending?${query.toString()}`)
+  const response = await fetchWithTimeout(`/codex-api/github-trending?${query.toString()}`, {}, {
+    timeoutMs: GATEWAY_BACKGROUND_FETCH_TIMEOUT_MS,
+    label: 'GitHub trending scope request',
+  })
   const payload = (await response.json()) as unknown
   if (!response.ok) {
     const message = getErrorMessageFromPayload(payload, 'Failed to fetch GitHub trending projects')
@@ -889,7 +1110,7 @@ export async function getGithubProjectsForScope(
       stars: typeof row.stars === 'number' ? row.stars : 0,
     })
   }
-  return projects
+  return await localizeGithubProjectsForUi(projects)
 }
 
 function getErrorMessageFromPayload(payload: unknown, fallback: string): string {
@@ -901,10 +1122,14 @@ function getErrorMessageFromPayload(payload: unknown, fallback: string): string 
 }
 
 export type ThreadTitleCache = { titles: Record<string, string>; order: string[] }
+let supportsThreadTitleGeneration: boolean | null = null
 
 export async function getThreadTitleCache(): Promise<ThreadTitleCache> {
   try {
-    const response = await fetch('/codex-api/thread-titles')
+    const response = await fetchWithTimeout('/codex-api/thread-titles', {}, {
+      timeoutMs: GATEWAY_BACKGROUND_FETCH_TIMEOUT_MS,
+      label: 'Thread title cache request',
+    })
     if (!response.ok) return { titles: {}, order: [] }
     const envelope = (await response.json()) as { data?: ThreadTitleCache }
     return envelope.data ?? { titles: {}, order: [] }
@@ -915,10 +1140,13 @@ export async function getThreadTitleCache(): Promise<ThreadTitleCache> {
 
 export async function persistThreadTitle(id: string, title: string): Promise<void> {
   try {
-    await fetch('/codex-api/thread-titles', {
+    await fetchWithTimeout('/codex-api/thread-titles', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, title }),
+    }, {
+      timeoutMs: GATEWAY_BACKGROUND_FETCH_TIMEOUT_MS,
+      label: 'Thread title save request',
     })
   } catch {
     // Best-effort persist
@@ -926,10 +1154,20 @@ export async function persistThreadTitle(id: string, title: string): Promise<voi
 }
 
 export async function generateThreadTitle(prompt: string, cwd: string | null): Promise<string> {
+  if (supportsThreadTitleGeneration === false) {
+    return ''
+  }
   try {
     const result = await callRpc<{ title?: string }>('generate-thread-title', { prompt, cwd })
+    supportsThreadTitleGeneration = true
     return result.title?.trim() ?? ''
-  } catch {
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.toLowerCase().includes('unknown variant `generate-thread-title`')
+    ) {
+      supportsThreadTitleGeneration = false
+    }
     return ''
   }
 }
@@ -985,7 +1223,10 @@ export async function uploadFile(file: File): Promise<string | null> {
   try {
     const form = new FormData()
     form.append('file', file)
-    const resp = await fetch('/codex-api/upload-file', { method: 'POST', body: form })
+    const resp = await fetchWithTimeout('/codex-api/upload-file', { method: 'POST', body: form }, {
+      timeoutMs: GATEWAY_UPLOAD_FETCH_TIMEOUT_MS,
+      label: 'Upload file request',
+    })
     if (!resp.ok) return null
     const data = (await resp.json()) as { path?: string }
     return data.path ?? null

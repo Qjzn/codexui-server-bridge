@@ -1,5 +1,5 @@
 import type { RpcEnvelope, RpcMethodCatalog } from '../types/codex'
-import { CodexApiError, extractErrorMessage } from './codexErrors'
+import { CodexApiError, extractErrorMessage, isAbortLikeError } from './codexErrors'
 
 type RpcRequestBody = {
   method: string
@@ -11,6 +11,9 @@ export type RpcNotification = {
   params: unknown
   atIso: string
 }
+
+export type RpcConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'disconnected'
+type RpcRequestOptions = { signal?: AbortSignal }
 
 type ServerRequestReplyBody = {
   id: number
@@ -24,6 +27,9 @@ type ServerRequestReplyBody = {
 const WS_OPEN_TIMEOUT_MS = 2500
 const RECONNECT_BASE_DELAY_MS = 1000
 const RECONNECT_MAX_DELAY_MS = 8000
+const RPC_FETCH_TIMEOUT_MS = 20000
+const META_FETCH_TIMEOUT_MS = 12000
+const SERVER_REQUEST_FETCH_TIMEOUT_MS = 15000
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -31,19 +37,68 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null
 }
 
-export async function rpcCall<T>(method: string, params?: unknown): Promise<T> {
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  timeoutMs = RPC_FETCH_TIMEOUT_MS,
+  timeoutLabel = 'Request',
+): Promise<Response> {
+  const controller = new AbortController()
+  const upstreamSignal = init.signal
+  let didTimeout = false
+  const timeoutId = window.setTimeout(() => {
+    didTimeout = true
+    controller.abort()
+  }, timeoutMs)
+
+  const abortFromUpstream = (): void => {
+    controller.abort()
+  }
+
+  if (upstreamSignal) {
+    if (upstreamSignal.aborted) {
+      window.clearTimeout(timeoutId)
+      controller.abort()
+    } else {
+      upstreamSignal.addEventListener('abort', abortFromUpstream, { once: true })
+    }
+  }
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    })
+  } catch (error) {
+    if (didTimeout || (error instanceof Error && error.name === 'AbortError' && !upstreamSignal?.aborted)) {
+      throw new CodexApiError(`${timeoutLabel} timed out after ${Math.ceil(timeoutMs / 1000)}s`, {
+        code: 'network_error',
+      })
+    }
+    throw error
+  } finally {
+    window.clearTimeout(timeoutId)
+    upstreamSignal?.removeEventListener('abort', abortFromUpstream)
+  }
+}
+
+export async function rpcCall<T>(method: string, params?: unknown, options: RpcRequestOptions = {}): Promise<T> {
   const body: RpcRequestBody = { method, params: params ?? null }
 
   let response: Response
   try {
-    response = await fetch('/codex-api/rpc', {
+    response = await fetchWithTimeout('/codex-api/rpc', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
-    })
+      signal: options.signal,
+    }, RPC_FETCH_TIMEOUT_MS, `RPC ${method}`)
   } catch (error) {
+    if (error instanceof CodexApiError || isAbortLikeError(error)) {
+      throw error
+    }
     throw new CodexApiError(
       error instanceof Error ? error.message : `RPC ${method} failed before request was sent`,
       { code: 'network_error', method },
@@ -80,7 +135,7 @@ export async function rpcCall<T>(method: string, params?: unknown): Promise<T> {
 }
 
 export async function fetchRpcMethodCatalog(): Promise<string[]> {
-  const response = await fetch('/codex-api/meta/methods')
+  const response = await fetchWithTimeout('/codex-api/meta/methods', {}, META_FETCH_TIMEOUT_MS, 'Method catalog request')
 
   let payload: unknown = null
   try {
@@ -105,7 +160,7 @@ export async function fetchRpcMethodCatalog(): Promise<string[]> {
 }
 
 export async function fetchRpcNotificationCatalog(): Promise<string[]> {
-  const response = await fetch('/codex-api/meta/notifications')
+  const response = await fetchWithTimeout('/codex-api/meta/notifications', {}, META_FETCH_TIMEOUT_MS, 'Notification catalog request')
 
   let payload: unknown = null
   try {
@@ -145,7 +200,10 @@ function toNotification(value: unknown): RpcNotification | null {
   }
 }
 
-export function subscribeRpcNotifications(onNotification: (value: RpcNotification) => void): () => void {
+export function subscribeRpcNotifications(
+  onNotification: (value: RpcNotification) => void,
+  options: { onConnectionStateChange?: (state: RpcConnectionState) => void } = {},
+): () => void {
   if (typeof window === 'undefined') {
     return () => {}
   }
@@ -157,8 +215,16 @@ export function subscribeRpcNotifications(onNotification: (value: RpcNotificatio
   let reconnectTimer: number | null = null
   let reconnectAttempt = 0
   let activeAttempt = 0
+  let hasEverConnected = false
+  let connectionState: RpcConnectionState = 'connecting'
 
   const preferredTransport = (): Transport => (typeof WebSocket !== 'undefined' ? 'ws' : 'sse')
+
+  const setConnectionState = (nextState: RpcConnectionState) => {
+    if (connectionState === nextState) return
+    connectionState = nextState
+    options.onConnectionStateChange?.(nextState)
+  }
 
   const clearReconnectTimer = () => {
     if (reconnectTimer !== null) {
@@ -189,6 +255,7 @@ export function subscribeRpcNotifications(onNotification: (value: RpcNotificatio
 
   const scheduleReconnect = (transport: Transport) => {
     if (closed || reconnectTimer !== null) return
+    setConnectionState('reconnecting')
     const delay = Math.min(
       RECONNECT_BASE_DELAY_MS * (2 ** Math.min(reconnectAttempt, 3)),
       RECONNECT_MAX_DELAY_MS,
@@ -207,8 +274,17 @@ export function subscribeRpcNotifications(onNotification: (value: RpcNotificatio
 
     source.onopen = () => {
       if (isStaleAttempt(attemptId)) return
+      hasEverConnected = true
+      setConnectionState('connected')
       reconnectAttempt = 0
     }
+
+    source.addEventListener('ready', () => {
+      if (isStaleAttempt(attemptId)) return
+      hasEverConnected = true
+      setConnectionState('connected')
+      reconnectAttempt = 0
+    })
 
     source.onmessage = (event) => {
       if (isStaleAttempt(attemptId)) return
@@ -260,6 +336,8 @@ export function subscribeRpcNotifications(onNotification: (value: RpcNotificatio
         return
       }
       didOpen = true
+      hasEverConnected = true
+      setConnectionState('connected')
       reconnectAttempt = 0
       clearFallbackTimer()
     }
@@ -271,7 +349,10 @@ export function subscribeRpcNotifications(onNotification: (value: RpcNotificatio
 
     socket.onerror = () => {
       if (isStaleAttempt(attemptId)) return
-      if (didOpen) return
+      if (didOpen) {
+        clearFallbackTimer()
+        return
+      }
       clearFallbackTimer()
       if (socket.readyState < 2) {
         socket.close()
@@ -296,6 +377,7 @@ export function subscribeRpcNotifications(onNotification: (value: RpcNotificatio
     activeAttempt += 1
     const attemptId = activeAttempt
     clearActiveTransport()
+    setConnectionState(hasEverConnected || reconnectAttempt > 0 ? 'reconnecting' : 'connecting')
 
     if (transport === 'ws') {
       attachWebSocketTransport(attemptId)
@@ -311,20 +393,24 @@ export function subscribeRpcNotifications(onNotification: (value: RpcNotificatio
     closed = true
     clearReconnectTimer()
     clearActiveTransport()
+    setConnectionState('disconnected')
   }
 }
 
 export async function respondServerRequest(body: ServerRequestReplyBody): Promise<void> {
   let response: Response
   try {
-    response = await fetch('/codex-api/server-requests/respond', {
+    response = await fetchWithTimeout('/codex-api/server-requests/respond', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
-    })
+    }, SERVER_REQUEST_FETCH_TIMEOUT_MS, 'Server request reply')
   } catch (error) {
+    if (error instanceof CodexApiError) {
+      throw error
+    }
     throw new CodexApiError(
       error instanceof Error ? error.message : 'Failed to reply to server request',
       { code: 'network_error', method: 'server-requests/respond' },
@@ -351,7 +437,12 @@ export async function respondServerRequest(body: ServerRequestReplyBody): Promis
 }
 
 export async function fetchPendingServerRequests(): Promise<unknown[]> {
-  const response = await fetch('/codex-api/server-requests/pending')
+  const response = await fetchWithTimeout(
+    '/codex-api/server-requests/pending',
+    {},
+    SERVER_REQUEST_FETCH_TIMEOUT_MS,
+    'Pending server requests',
+  )
 
   let payload: unknown = null
   try {

@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { mkdtemp, readFile, readdir, rm, mkdir, stat, lstat, readlink, symlink } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, mkdir, stat, lstat, readlink, symlink, link } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { homedir, tmpdir } from 'node:os'
@@ -823,7 +823,16 @@ async function syncInstalledSkillsFolderToRepo(
   await runCommand('git', ['config', 'user.name', 'Skills Sync'], { cwd: repoDir })
   await runCommand('git', ['add', '.'], { cwd: repoDir })
   const status = (await runCommandWithOutput('git', ['status', '--porcelain'], { cwd: repoDir })).trim()
-  if (!status) return
+  if (!status) {
+    const state = await readSkillsSyncState()
+    await writeSkillsSyncState({
+      ...state,
+      lastSyncAttemptCount: 1,
+      lastSyncError: '',
+      lastSyncAtIso: new Date().toISOString(),
+    })
+    return
+  }
   await runCommand('git', ['commit', '-m', 'Sync installed skills folder and manifest'], { cwd: repoDir })
   await pushWithNonFastForwardRetry(repoDir, branch)
 }
@@ -934,7 +943,20 @@ async function ensureCodexAgentsSymlinkToSkillsAgents(): Promise<void> {
     }
     await rm(codexAgentsPath, { force: true, recursive: true })
   } catch {}
-  await symlink(relativeTarget, codexAgentsPath)
+  try {
+    await symlink(relativeTarget, codexAgentsPath)
+    return
+  } catch {}
+  try {
+    await rm(codexAgentsPath, { force: true, recursive: true })
+  } catch {}
+  try {
+    // Hard links work on Windows without Developer Mode and still keep both paths in sync.
+    await link(skillsAgentsPath, codexAgentsPath)
+    return
+  } catch {}
+  const skillsAgentsContent = await readFile(skillsAgentsPath, 'utf8')
+  await writeFile(codexAgentsPath, skillsAgentsContent, 'utf8')
 }
 
 async function runSkillsSyncStartup(appServer: AppServerLike): Promise<void> {

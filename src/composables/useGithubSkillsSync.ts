@@ -1,6 +1,4 @@
 import { computed, ref } from 'vue'
-import { initializeApp, getApp, getApps } from 'firebase/app'
-import { getAuth, GithubAuthProvider, signInWithPopup } from 'firebase/auth'
 
 type ToastType = 'success' | 'error'
 
@@ -35,6 +33,28 @@ const firebaseConfig = {
   storageBucket: 'gptcall-416910.appspot.com',
   messagingSenderId: '99275526699',
   appId: '1:99275526699:web:3b623e1e2996108b52106e',
+}
+
+type FirebaseModules = {
+  app: typeof import('firebase/app')
+  auth: typeof import('firebase/auth')
+}
+
+let firebaseModulesPromise: Promise<FirebaseModules> | null = null
+
+async function loadFirebaseModules(): Promise<FirebaseModules> {
+  if (!firebaseModulesPromise) {
+    firebaseModulesPromise = Promise.all([
+      import('firebase/app'),
+      import('firebase/auth'),
+    ])
+      .then(([app, auth]) => ({ app, auth }))
+      .catch((error) => {
+        firebaseModulesPromise = null
+        throw error
+      })
+  }
+  return firebaseModulesPromise
 }
 
 export function useGithubSkillsSync(options: UseGithubSkillsSyncOptions) {
@@ -110,12 +130,15 @@ export function useGithubSkillsSync(options: UseGithubSkillsSyncOptions) {
 
   async function startGithubFirebaseLogin(): Promise<void> {
     try {
-      const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig)
-      const auth = getAuth(app)
-      const provider = new GithubAuthProvider()
+      const firebase = await loadFirebaseModules()
+      const app = firebase.app.getApps().length > 0
+        ? firebase.app.getApp()
+        : firebase.app.initializeApp(firebaseConfig)
+      const auth = firebase.auth.getAuth(app)
+      const provider = new firebase.auth.GithubAuthProvider()
       provider.addScope('repo')
-      const result = await signInWithPopup(auth, provider)
-      const credential = GithubAuthProvider.credentialFromResult(result)
+      const result = await firebase.auth.signInWithPopup(auth, provider)
+      const credential = firebase.auth.GithubAuthProvider.credentialFromResult(result)
       const token = credential?.accessToken ?? ''
       if (!token) {
         throw new Error('GitHub access token missing from Firebase login')

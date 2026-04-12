@@ -93,6 +93,16 @@ type GithubTrendingItem = {
   stars: number
 }
 
+type TranslationCacheEntry = {
+  value: string
+  expiresAt: number
+}
+
+const GITHUB_DESCRIPTION_TRANSLATION_CACHE_TTL_MS = 12 * 60 * 60 * 1000
+const GITHUB_DESCRIPTION_TRANSLATION_CACHE_MAX_ENTRIES = 500
+const GITHUB_DESCRIPTION_TRANSLATION_BATCH_LIMIT = 10
+const githubDescriptionTranslationCache = new Map<string, TranslationCacheEntry>()
+
 const THREAD_RESPONSE_TURN_LIMIT = 10
 const THREAD_METHODS_WITH_TURNS = new Set(['thread/read', 'thread/resume', 'thread/fork', 'thread/rollback'])
 
@@ -136,6 +146,27 @@ function getErrorMessage(payload: unknown, fallback: string): string {
   }
 
   return fallback
+}
+
+function writeBridgeLog(level: 'warn' | 'error', message: string, details: Record<string, unknown> = {}): void {
+  try {
+    process.stderr.write(`${JSON.stringify({
+      atIso: new Date().toISOString(),
+      scope: 'codex-bridge',
+      level,
+      message,
+      ...details,
+    })}\n`)
+  } catch {
+    // Logging must never interfere with bridge traffic.
+  }
+}
+
+function logBridgeError(message: string, error: unknown, details: Record<string, unknown> = {}): void {
+  writeBridgeLog('error', message, {
+    ...details,
+    error: getErrorMessage(error, 'Unknown bridge error'),
+  })
 }
 
 function setJson(res: ServerResponse, statusCode: number, payload: unknown): void {
@@ -264,6 +295,111 @@ async function fetchGithubTrending(since: 'daily' | 'weekly' | 'monthly', limit:
   }
   const html = await response.text()
   return parseGithubTrendingHtml(html, limit)
+}
+
+function normalizeGithubDescriptionTranslationText(value: string): string {
+  return value.replace(/\s+/gu, ' ').trim()
+}
+
+function hasCjkCharacters(value: string): boolean {
+  return /[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]/u.test(value)
+}
+
+function shouldTranslateGithubDescription(value: string): boolean {
+  const normalized = normalizeGithubDescriptionTranslationText(value)
+  if (!normalized) return false
+  if (hasCjkCharacters(normalized)) return false
+  return /[A-Za-z]/u.test(normalized)
+}
+
+function pruneGithubDescriptionTranslationCache(): void {
+  const now = Date.now()
+  for (const [key, entry] of githubDescriptionTranslationCache.entries()) {
+    if (entry.expiresAt <= now) {
+      githubDescriptionTranslationCache.delete(key)
+    }
+  }
+
+  if (githubDescriptionTranslationCache.size <= GITHUB_DESCRIPTION_TRANSLATION_CACHE_MAX_ENTRIES) {
+    return
+  }
+
+  const overflow = githubDescriptionTranslationCache.size - GITHUB_DESCRIPTION_TRANSLATION_CACHE_MAX_ENTRIES
+  let removed = 0
+  for (const key of githubDescriptionTranslationCache.keys()) {
+    githubDescriptionTranslationCache.delete(key)
+    removed += 1
+    if (removed >= overflow) break
+  }
+}
+
+function readGoogleTranslateText(payload: unknown): string {
+  if (!Array.isArray(payload) || !Array.isArray(payload[0])) return ''
+
+  let translated = ''
+  for (const segment of payload[0]) {
+    if (!Array.isArray(segment) || typeof segment[0] !== 'string') continue
+    translated += segment[0]
+  }
+
+  return normalizeGithubDescriptionTranslationText(translated)
+}
+
+async function translateGithubDescriptionToChinese(text: string): Promise<string> {
+  const normalized = normalizeGithubDescriptionTranslationText(text)
+  if (!shouldTranslateGithubDescription(normalized)) {
+    return normalized
+  }
+
+  const cached = githubDescriptionTranslationCache.get(normalized)
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value
+  }
+  if (cached) {
+    githubDescriptionTranslationCache.delete(normalized)
+  }
+
+  const query = new URLSearchParams({
+    client: 'gtx',
+    sl: 'auto',
+    tl: 'zh-CN',
+    dt: 't',
+    q: normalized,
+  })
+  const response = await fetch(`https://translate.googleapis.com/translate_a/single?${query.toString()}`, {
+    headers: {
+      Accept: 'application/json, text/plain, */*',
+      'User-Agent': 'codexui-server-bridge',
+    },
+  })
+  if (!response.ok) {
+    throw new Error(`GitHub description translation failed (${response.status})`)
+  }
+
+  const translated = readGoogleTranslateText(await response.json())
+  const nextValue = translated || normalized
+  githubDescriptionTranslationCache.set(normalized, {
+    value: nextValue,
+    expiresAt: Date.now() + GITHUB_DESCRIPTION_TRANSLATION_CACHE_TTL_MS,
+  })
+  pruneGithubDescriptionTranslationCache()
+  return nextValue
+}
+
+async function translateGithubDescriptionsToChinese(descriptions: string[]): Promise<string[]> {
+  const normalizedDescriptions = descriptions.map((description) => normalizeGithubDescriptionTranslationText(description))
+  const uniqueTranslations = new Map<string, Promise<string>>()
+
+  return await Promise.all(normalizedDescriptions.map(async (description) => {
+    if (!description) return ''
+    if (!uniqueTranslations.has(description)) {
+      uniqueTranslations.set(
+        description,
+        translateGithubDescriptionToChinese(description).catch(() => description),
+      )
+    }
+    return await uniqueTranslations.get(description)!
+  }))
 }
 
 async function listFilesWithRipgrep(cwd: string): Promise<string[]> {
@@ -1079,6 +1215,12 @@ class AppServerProcess {
 
     proc.on('exit', () => {
       const failure = new Error(this.stopping ? 'codex app-server stopped' : 'codex app-server exited unexpectedly')
+      if (!this.stopping) {
+        logBridgeError('Codex app-server exited unexpectedly', failure, {
+          pendingRpcCount: this.pending.size,
+          pendingServerRequestCount: this.pendingServerRequests.size,
+        })
+      }
       for (const request of this.pending.values()) {
         request.reject(failure)
       }
@@ -1159,6 +1301,40 @@ class AppServerProcess {
     })
   }
 
+  private isAutoApprovedServerRequest(method: string): boolean {
+    return (
+      method === 'item/commandExecution/requestApproval'
+      || method === 'item/fileChange/requestApproval'
+    )
+  }
+
+  private readServerRequestThreadId(params: unknown): string {
+    const requestParams = asRecord(params)
+    return (
+      typeof requestParams?.threadId === 'string' && requestParams.threadId.length > 0
+        ? requestParams.threadId
+        : ''
+    )
+  }
+
+  private emitServerRequestResolved(
+    requestId: number,
+    method: string,
+    params: unknown,
+    mode: 'automatic' | 'manual',
+  ): void {
+    this.emitNotification({
+      method: 'server/request/resolved',
+      params: {
+        id: requestId,
+        method,
+        threadId: this.readServerRequestThreadId(params),
+        mode,
+        resolvedAtIso: new Date().toISOString(),
+      },
+    })
+  }
+
   private resolvePendingServerRequest(requestId: number, reply: ServerRequestReply): void {
     const pendingRequest = this.pendingServerRequests.get(requestId)
     if (!pendingRequest) {
@@ -1167,24 +1343,18 @@ class AppServerProcess {
     this.pendingServerRequests.delete(requestId)
 
     this.sendServerRequestReply(requestId, reply)
-    const requestParams = asRecord(pendingRequest.params)
-    const threadId =
-      typeof requestParams?.threadId === 'string' && requestParams.threadId.length > 0
-        ? requestParams.threadId
-        : ''
-    this.emitNotification({
-      method: 'server/request/resolved',
-      params: {
-        id: requestId,
-        method: pendingRequest.method,
-        threadId,
-        mode: 'manual',
-        resolvedAtIso: new Date().toISOString(),
-      },
-    })
+    this.emitServerRequestResolved(requestId, pendingRequest.method, pendingRequest.params, 'manual')
   }
 
   private handleServerRequest(requestId: number, method: string, params: unknown): void {
+    if (this.isAutoApprovedServerRequest(method)) {
+      this.sendServerRequestReply(requestId, {
+        result: { decision: 'acceptForSession' },
+      })
+      this.emitServerRequestResolved(requestId, method, params, 'automatic')
+      return
+    }
+
     const pendingRequest: PendingServerRequest = {
       id: requestId,
       method,
@@ -1239,6 +1409,10 @@ class AppServerProcess {
   async rpc(method: string, params: unknown): Promise<unknown> {
     await this.ensureInitialized()
     return this.call(method, params)
+  }
+
+  async warmup(): Promise<void> {
+    await this.ensureInitialized()
   }
 
   onNotification(listener: (value: { method: string; params: unknown }) => void): () => void {
@@ -1572,13 +1746,22 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
     return threadSearchIndexPromise
   }
   void initializeSkillsSyncOnStartup(appServer)
+    .catch((error) => {
+      logBridgeError('Startup skills sync failed', error)
+    })
+  void appServer.warmup()
+    .catch((error) => {
+      logBridgeError('App server warmup failed', error)
+    })
   void readTelegramBridgeConfig()
     .then((config) => {
       if (!config.botToken) return
       telegramBridge.configureToken(config.botToken)
       telegramBridge.start()
     })
-    .catch(() => {})
+    .catch((error) => {
+      logBridgeError('Telegram bridge startup failed', error)
+    })
 
   const middleware = async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
     try {
@@ -1687,6 +1870,22 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
           setJson(res, 200, { data })
         } catch (error) {
           setJson(res, 502, { error: getErrorMessage(error, 'Failed to fetch GitHub trending') })
+        }
+        return
+      }
+
+      if (req.method === 'POST' && url.pathname === '/codex-api/github-trending/translate') {
+        const payload = asRecord(await readJsonBody(req))
+        const incomingDescriptions = Array.isArray(payload?.descriptions) ? payload.descriptions : []
+        const descriptions = incomingDescriptions
+          .slice(0, GITHUB_DESCRIPTION_TRANSLATION_BATCH_LIMIT)
+          .map((value) => (typeof value === 'string' ? value : ''))
+
+        try {
+          const translations = await translateGithubDescriptionsToChinese(descriptions)
+          setJson(res, 200, { data: { translations } })
+        } catch {
+          setJson(res, 200, { data: { translations: descriptions } })
         }
         return
       }
@@ -2121,6 +2320,10 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
       next()
     } catch (error) {
       const message = getErrorMessage(error, 'Unknown bridge error')
+      logBridgeError('Bridge request failed', error, {
+        requestMethod: req.method ?? '',
+        requestPath: req.url ?? '',
+      })
       setJson(res, 502, { error: message })
     }
   }

@@ -44,15 +44,25 @@
             </button>
           </div>
 
-          <button
-            v-if="!isSidebarCollapsed"
-            class="sidebar-skills-link"
-            :class="{ 'is-active': isSkillsRoute }"
-            type="button"
-            @click="router.push({ name: 'skills' }); isMobile && setSidebarCollapsed(true)"
-          >
-            技能中心
-          </button>
+          <div v-if="!isSidebarCollapsed" class="sidebar-explore-nav">
+            <button
+              class="sidebar-skills-link"
+              :class="{ 'is-active': isSkillsRoute }"
+              type="button"
+              @click="router.push({ name: 'skills' }); isMobile && setSidebarCollapsed(true)"
+            >
+              技能中心
+            </button>
+            <button
+              v-if="showGithubTrendingProjects"
+              class="sidebar-skills-link"
+              :class="{ 'is-active': isGithubTrendingRoute }"
+              type="button"
+              @click="router.push({ name: 'github-trending' }); isMobile && setSidebarCollapsed(true)"
+            >
+              GitHub 热门
+            </button>
+          </div>
 
           <SidebarThreadTree :groups="projectGroups" :project-display-name-by-id="projectDisplayNameById"
             v-if="!isSidebarCollapsed"
@@ -185,6 +195,17 @@
           <template v-if="isSkillsRoute">
             <SkillsHub @skills-changed="onSkillsChanged" />
           </template>
+          <template v-else-if="isGithubTrendingRoute">
+            <GithubTrendingHub
+              :projects="trendingProjects"
+              :is-loading="isTrendingProjectsLoading"
+              :scope="githubTipsScope"
+              :scope-options="githubTipsScopeOptions"
+              @update:scope="onGithubTipsScopeChange"
+              @refresh="onRefreshTrendingProjects"
+              @ask-project="onAskTrendingProject"
+            />
+          </template>
           <template v-else-if="isHomeRoute">
             <div class="content-grid">
               <div class="new-thread-empty">
@@ -213,45 +234,6 @@
                 >
                   <strong class="worktree-init-status-title">{{ worktreeInitStatus.title }}</strong>
                   <span class="worktree-init-status-message">{{ worktreeInitStatus.message }}</span>
-                </div>
-                <div v-if="showGithubTrendingProjects" class="new-thread-trending">
-                  <div class="new-thread-trending-header">
-                    <p class="new-thread-trending-title">GitHub 热门项目</p>
-                    <ComposerDropdown
-                      class="new-thread-trending-scope-dropdown"
-                      :model-value="githubTipsScope"
-                      :options="githubTipsScopeOptions"
-                      @update:model-value="onGithubTipsScopeChange"
-                    />
-                  </div>
-                  <p v-if="isTrendingProjectsLoading" class="new-thread-trending-empty">正在加载热门项目...</p>
-                  <p v-else-if="trendingProjects.length === 0" class="new-thread-trending-empty">
-                    当前无法获取热门仓库。
-                  </p>
-                  <div v-else class="new-thread-trending-list">
-                    <button
-                      v-for="project in trendingProjects"
-                      :key="project.id"
-                      type="button"
-                      class="new-thread-trending-tip"
-                      @click="onSelectTrendingProjectTip(project)"
-                    >
-                      <span class="new-thread-trending-tip-name" :title="project.fullName">
-                        <template v-if="project.owner && project.repo">
-                          <span class="new-thread-trending-tip-name-owner">{{ project.owner }}</span>
-                          <span class="new-thread-trending-tip-name-slash">/</span>
-                          <span class="new-thread-trending-tip-name-repo">{{ project.repo }}</span>
-                        </template>
-                        <template v-else>
-                          <span class="new-thread-trending-tip-name-repo">{{ project.fullName }}</span>
-                        </template>
-                      </span>
-                      <span class="new-thread-trending-tip-meta">{{ formatTrendingTipMeta(project) }}</span>
-                      <span class="new-thread-trending-tip-description">
-                        {{ project.description || '暂无描述。' }}
-                      </span>
-                    </button>
-                  </div>
                 </div>
               </div>
 
@@ -353,7 +335,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import DesktopLayout from './components/layout/DesktopLayout.vue'
 import SidebarThreadTree from './components/sidebar/SidebarThreadTree.vue'
@@ -361,10 +343,7 @@ import ContentHeader from './components/content/ContentHeader.vue'
 import ThreadConversation from './components/content/ThreadConversation.vue'
 import ThreadComposer from './components/content/ThreadComposer.vue'
 import QueuedMessages from './components/content/QueuedMessages.vue'
-import RateLimitStatus from './components/content/RateLimitStatus.vue'
 import ComposerDropdown from './components/content/ComposerDropdown.vue'
-import ComposerRuntimeDropdown from './components/content/ComposerRuntimeDropdown.vue'
-import SkillsHub from './components/content/SkillsHub.vue'
 import SidebarThreadControls from './components/sidebar/SidebarThreadControls.vue'
 import IconTablerArrowBackUp from './components/icons/IconTablerArrowBackUp.vue'
 import IconTablerSearch from './components/icons/IconTablerSearch.vue'
@@ -390,6 +369,11 @@ import type { ComposerDraftPayload, ThreadComposerExposed } from './components/c
 import type { DesktopAppStatus, GithubTipsScope, GithubTrendingProject, TelegramStatus } from './api/codexGateway'
 import { getPathLeafName, getPathParent } from './pathUtils.js'
 
+const SkillsHub = defineAsyncComponent(() => import('./components/content/SkillsHub.vue'))
+const GithubTrendingHub = defineAsyncComponent(() => import('./components/content/GithubTrendingHub.vue'))
+const RateLimitStatus = defineAsyncComponent(() => import('./components/content/RateLimitStatus.vue'))
+const ComposerRuntimeDropdown = defineAsyncComponent(() => import('./components/content/ComposerRuntimeDropdown.vue'))
+
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'codex-web-local.sidebar-collapsed.v1'
 const worktreeName = import.meta.env.VITE_WORKTREE_NAME ?? 'unknown'
 const appVersion = import.meta.env.VITE_APP_VERSION ?? 'unknown'
@@ -400,7 +384,7 @@ const SETTINGS_HELP = {
   dictationClickToToggle: '改为点击开始、点击结束听写，而不是按住说话。',
   dictationAutoSend: '录音结束后自动发送转写内容。',
   rollbackCommits: '开启后每条消息都会生成回滚提交，回滚时会重置到该消息之前的提交。',
-  githubTrendingProjects: '显示或隐藏新会话页里的 GitHub 热门项目卡片。',
+  githubTrendingProjects: '显示或隐藏侧栏里的 GitHub 热门页面入口。',
   dictationLanguage: '选择转写语言，或保持自动识别。',
 } as const
 const WHISPER_LANGUAGES: Record<string, string> = {
@@ -527,6 +511,8 @@ const {
   isInterruptingTurn,
   isUpdatingSpeedMode,
   notificationStale,
+  realtimeConnectionState,
+  syncLagging,
   error,
   refreshAll,
   refreshSkills,
@@ -566,6 +552,7 @@ const sidebarSettingsAreaRef = ref<HTMLElement | null>(null)
 const trendingProjects = ref<GithubTrendingProject[]>([])
 const isTrendingProjectsLoading = ref(false)
 const githubTipsScope = ref<GithubTipsScope>('trending-daily')
+const lastLoadedGithubTipsScope = ref<GithubTipsScope | ''>('')
 const editingQueuedMessageState = ref<{ threadId: string; queueIndex: number } | null>(null)
 const isRouteSyncInProgress = ref(false)
 const hasInitialized = ref(false)
@@ -640,8 +627,13 @@ const knownThreadIdSet = computed(() => {
 
 const isHomeRoute = computed(() => route.name === 'home')
 const isSkillsRoute = computed(() => route.name === 'skills')
+const isGithubTrendingRoute = computed(() => route.name === 'github-trending')
+const isNonThreadRoute = computed(() => (
+  isHomeRoute.value || isSkillsRoute.value || isGithubTrendingRoute.value
+))
 const contentTitle = computed(() => {
   if (isSkillsRoute.value) return '技能'
+  if (isGithubTrendingRoute.value) return 'GitHub 热门'
   if (isHomeRoute.value) return '新会话'
   return selectedThread.value?.title ?? '选择会话'
 })
@@ -655,25 +647,49 @@ const pageTitle = computed(() => {
 })
 const headerSubtitle = computed(() => {
   if (isSkillsRoute.value) return '管理已安装技能和当前运行能力。'
+  if (isGithubTrendingRoute.value) return '浏览热门仓库、查看介绍，并直接带着项目链接发起提问。'
   if (isHomeRoute.value) return '从已配置工作区快速发起新的 Codex 任务。'
   const cwd = selectedThread.value?.cwd?.trim() ?? ''
   return cwd || ''
 })
+const hasActiveSyncDemand = computed(() => {
+  if (isLoadingMessages.value || isSendingMessage.value) return true
+  if (selectedThreadExecutionActive.value) return true
+  if (selectedThread.value?.unread) return true
+  if (selectedThreadServerRequests.value.length > 0) return true
+  return false
+})
 const serviceStatusTone = computed<'live' | 'syncing' | 'warning' | 'danger'>(() => {
   if (error.value.trim().length > 0) return 'danger'
-  if (notificationStale.value) return 'warning'
+  if (realtimeConnectionState.value === 'disconnected' && hasActiveSyncDemand.value) return 'danger'
+  if (realtimeConnectionState.value === 'connecting') return 'syncing'
+  if (realtimeConnectionState.value === 'reconnecting' && hasActiveSyncDemand.value) return 'warning'
+  if (syncLagging.value && hasActiveSyncDemand.value) return 'warning'
+  if (notificationStale.value && hasActiveSyncDemand.value) return 'warning'
   if (isLoadingMessages.value || isSendingMessage.value) return 'syncing'
   return 'live'
 })
 const serviceStatusLabel = computed(() => {
   if (error.value.trim().length > 0) return '出现异常'
-  if (notificationStale.value) return '同步延迟'
+  if (realtimeConnectionState.value === 'disconnected' && hasActiveSyncDemand.value) return '连接中断'
+  if (realtimeConnectionState.value === 'connecting') return '连接中'
+  if (realtimeConnectionState.value === 'reconnecting' && hasActiveSyncDemand.value) return '回补同步中'
+  if (syncLagging.value && hasActiveSyncDemand.value) return '同步延迟'
+  if (notificationStale.value && hasActiveSyncDemand.value) return '回补同步中'
+  if (realtimeConnectionState.value === 'reconnecting' || realtimeConnectionState.value === 'disconnected') return '待机'
+  if (notificationStale.value) return '待机'
   if (isLoadingMessages.value || isSendingMessage.value) return '同步中'
   return '已连接'
 })
 const serviceStatusDetail = computed(() => {
   if (error.value.trim().length > 0) return error.value.trim()
-  if (notificationStale.value) return '后台同步仍在进行，但实时通知暂时落后。'
+  if (realtimeConnectionState.value === 'disconnected' && hasActiveSyncDemand.value) return '实时通知通道已断开，页面正在等待重新建立连接。'
+  if (realtimeConnectionState.value === 'connecting') return '正在建立实时通知连接。'
+  if (realtimeConnectionState.value === 'reconnecting' && hasActiveSyncDemand.value) return '实时通知正在重连，页面会继续短周期补同步。'
+  if (syncLagging.value && hasActiveSyncDemand.value) return '最近同步结果偏旧，页面正在主动补拉最新消息。'
+  if (notificationStale.value && hasActiveSyncDemand.value) return '实时通知暂时安静，页面正在主动校验任务状态并补拉最新进度。'
+  if (selectedThreadServerRequests.value.length > 0) return '当前任务正在等待你的确认或补充输入，处理后会自动继续。'
+  if (notificationStale.value) return '当前无进行中任务，未检测到可用同步目标。'
   if (selectedLiveOverlay.value?.activityLabel) return selectedLiveOverlay.value.activityLabel
   return 'Web 服务状态正常。'
 })
@@ -702,12 +718,16 @@ const composerCwd = computed(() => {
 })
 const isSelectedThreadInProgress = computed(() => !isHomeRoute.value && selectedThread.value?.inProgress === true)
 const threadStatusTone = computed<'live' | 'syncing' | 'warning' | 'danger'>(() => {
+  if (selectedThreadServerRequests.value.length > 0) return 'warning'
   if (selectedThreadExecutionActive.value) return 'syncing'
   if (selectedThread.value?.unread) return 'warning'
   return 'live'
 })
 const threadStatusLabel = computed(() => {
-  if (isHomeRoute.value || isSkillsRoute.value || !selectedThread.value) return ''
+  if (isNonThreadRoute.value || !selectedThread.value) return ''
+  if (selectedThreadServerRequests.value.length > 0) {
+    return selectedLiveOverlay.value?.activityLabel || '等待处理'
+  }
   if (selectedThreadExecutionActive.value) {
     return selectedLiveOverlay.value?.activityLabel || '执行中'
   }
@@ -798,26 +818,92 @@ const desktopRefreshConfirmMessage = computed(() => (
     : '这会关闭并重开官方 Codex 桌面端，让它重新载入最新的本地会话记录。'
 ))
 
+type IdleSchedulerWindow = Window & typeof globalThis & {
+  requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number
+  cancelIdleCallback?: (handle: number) => void
+}
+
+let idleTaskCancels: Array<() => void> = []
+let pendingTrendingProjectsCancel: (() => void) | null = null
+let trendingProjectsRequestToken = 0
+
+function scheduleIdleTask(task: () => void, timeoutMs = 1200): (() => void) {
+  if (typeof window === 'undefined') {
+    task()
+    return () => {}
+  }
+
+  const idleWindow = window as IdleSchedulerWindow
+  if (typeof idleWindow.requestIdleCallback === 'function' && typeof idleWindow.cancelIdleCallback === 'function') {
+    const handle = idleWindow.requestIdleCallback(task, { timeout: timeoutMs })
+    return () => idleWindow.cancelIdleCallback?.(handle)
+  }
+
+  const handle = window.setTimeout(task, Math.min(Math.max(Math.round(timeoutMs / 3), 120), 420))
+  return () => window.clearTimeout(handle)
+}
+
+function queueIdleTask(task: () => void, timeoutMs = 1200): void {
+  idleTaskCancels.push(scheduleIdleTask(task, timeoutMs))
+}
+
+function clearQueuedIdleTasks(): void {
+  for (const cancel of idleTaskCancels) {
+    cancel()
+  }
+  idleTaskCancels = []
+}
+
+function cancelPendingTrendingProjectsLoad(): void {
+  pendingTrendingProjectsCancel?.()
+  pendingTrendingProjectsCancel = null
+}
+
+function scheduleTrendingProjectsLoad(priority: 'idle' | 'immediate' = 'idle'): void {
+  if (!showGithubTrendingProjects.value || !isGithubTrendingRoute.value) return
+  const targetScope = githubTipsScope.value
+  if (
+    lastLoadedGithubTipsScope.value === targetScope &&
+    trendingProjects.value.length > 0 &&
+    !isTrendingProjectsLoading.value
+  ) {
+    return
+  }
+
+  cancelPendingTrendingProjectsLoad()
+  const run = () => {
+    pendingTrendingProjectsCancel = null
+    void loadTrendingProjects(targetScope)
+  }
+
+  if (priority === 'immediate') {
+    run()
+    return
+  }
+
+  pendingTrendingProjectsCancel = scheduleIdleTask(run, 1800)
+}
+
 onMounted(() => {
   window.addEventListener('keydown', onWindowKeyDown)
   applyDarkMode()
   darkModeMediaQuery?.addEventListener('change', applyDarkMode)
   void initialize()
   void applyLaunchProjectPathFromUrl()
-  void loadHomeDirectory()
-  void loadWorkspaceRootOptionsState()
-  void refreshDefaultProjectName()
-  void refreshTelegramStatus()
-  void refreshDesktopAppAvailability()
-  if (showGithubTrendingProjects.value) {
-    void loadTrendingProjects()
-  }
+  queueIdleTask(() => { void loadHomeDirectory() }, 800)
+  queueIdleTask(() => { void loadWorkspaceRootOptionsState() }, 950)
+  queueIdleTask(() => { void refreshDefaultProjectName() }, 1200)
+  queueIdleTask(() => { void refreshTelegramStatus() }, 1500)
+  queueIdleTask(() => { void refreshDesktopAppAvailability() }, 1700)
+  scheduleTrendingProjectsLoad()
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', onWindowKeyDown)
   window.removeEventListener('pointerdown', onWindowPointerDownForSettings, { capture: true })
   darkModeMediaQuery?.removeEventListener('change', applyDarkMode)
+  clearQueuedIdleTasks()
+  cancelPendingTrendingProjectsLoad()
   if (threadSearchTimer) {
     clearTimeout(threadSearchTimer)
     threadSearchTimer = null
@@ -835,6 +921,10 @@ watch(sidebarSearchQuery, (value) => {
     serverMatchedThreadIds.value = null
     return
   }
+  if (query.length < 2) {
+    serverMatchedThreadIds.value = null
+    return
+  }
 
   threadSearchTimer = setTimeout(() => {
     void searchThreads(query, 1000)
@@ -846,7 +936,7 @@ watch(sidebarSearchQuery, (value) => {
         if (sidebarSearchQuery.value.trim() !== query) return
         serverMatchedThreadIds.value = null
       })
-  }, 220)
+  }, 280)
 })
 
 watch(isSettingsOpen, (open) => {
@@ -1114,12 +1204,6 @@ function onSubmitThreadMessage(payload: { text: string; imageUrls: string[]; fil
   void sendMessageToSelectedThread(text, payload.imageUrls, payload.skills, payload.mode, payload.fileAttachments, queueInsertIndex)
 }
 
-function formatTrendingTipMeta(project: GithubTrendingProject): string {
-  const stars = new Intl.NumberFormat().format(project.stars)
-  if (project.language) return `${project.language} · ★ ${stars}`
-  return `★ ${stars}`
-}
-
 function onGithubTipsScopeChange(nextValue: string): void {
   const allowed = new Set<GithubTipsScope>([
     'search-daily',
@@ -1132,6 +1216,13 @@ function onGithubTipsScopeChange(nextValue: string): void {
   const scope = allowed.has(nextValue as GithubTipsScope) ? (nextValue as GithubTipsScope) : 'trending-daily'
   if (githubTipsScope.value === scope) return
   githubTipsScope.value = scope
+}
+
+function onRefreshTrendingProjects(): void {
+  trendingProjectsRequestToken += 1
+  lastLoadedGithubTipsScope.value = ''
+  cancelPendingTrendingProjectsLoad()
+  scheduleTrendingProjectsLoad('immediate')
 }
 
 function onConnectTelegramBot(): void {
@@ -1151,11 +1242,19 @@ function onConnectTelegramBot(): void {
     })
 }
 
-function onSelectTrendingProjectTip(project: GithubTrendingProject): void {
+function buildTrendingProjectAskPrompt(project: GithubTrendingProject): string {
+  return `请先了解这个 GitHub 项目：${project.url}\n然后用非常简单、五年级学生也能听懂的话解释这个项目是做什么的。`
+}
+
+async function onAskTrendingProject(project: GithubTrendingProject): Promise<void> {
+  if (!isHomeRoute.value) {
+    await router.push({ name: 'home' })
+    await nextTick()
+  }
   const composer = homeThreadComposerRef.value
   if (!composer) return
   composer.hydrateDraft({
-    text: `请克隆并运行这个 GitHub 项目：${project.url}\n然后用非常简单、五年级学生也能听懂的话解释这个项目是做什么的。`,
+    text: buildTrendingProjectAskPrompt(project),
     imageUrls: [],
     fileAttachments: [],
     skills: [],
@@ -1320,14 +1419,24 @@ async function loadWorkspaceRootOptionsState(): Promise<void> {
   }
 }
 
-async function loadTrendingProjects(): Promise<void> {
+async function loadTrendingProjects(scope: GithubTipsScope = githubTipsScope.value): Promise<void> {
+  const requestToken = ++trendingProjectsRequestToken
   isTrendingProjectsLoading.value = true
   try {
-    trendingProjects.value = await getGithubProjectsForScope(githubTipsScope.value, 6)
+    const rows = await getGithubProjectsForScope(scope, 6)
+    if (requestToken !== trendingProjectsRequestToken) return
+    if (!showGithubTrendingProjects.value || !isGithubTrendingRoute.value) return
+    if (scope !== githubTipsScope.value) return
+    trendingProjects.value = rows
+    lastLoadedGithubTipsScope.value = scope
   } catch {
+    if (requestToken !== trendingProjectsRequestToken) return
     trendingProjects.value = []
+    lastLoadedGithubTipsScope.value = ''
   } finally {
-    isTrendingProjectsLoading.value = false
+    if (requestToken === trendingProjectsRequestToken) {
+      isTrendingProjectsLoading.value = false
+    }
   }
 }
 function joinPath(parent: string, child: string): string {
@@ -1363,7 +1472,7 @@ function onRollback(payload: { turnIndex: number; prependText?: string }): void 
 }
 
 function onExportChat(): void {
-  if (isHomeRoute.value || isSkillsRoute.value || typeof document === 'undefined') return
+  if (isNonThreadRoute.value || typeof document === 'undefined') return
   if (!selectedThread.value || filteredMessages.value.length === 0) return
   const markdown = buildThreadMarkdown()
   const fileName = buildExportFileName()
@@ -1607,9 +1716,13 @@ function normalizeMessageType(rawType: string | undefined, role: string): string
 }
 
 async function initialize(): Promise<void> {
-  await refreshAll()
+  await refreshAll({ loadMessages: false })
   hasInitialized.value = true
+  const selectedThreadIdBeforeRouteSync = selectedThreadId.value
   await syncThreadSelectionWithRoute()
+  if (route.name === 'thread' && selectedThreadId.value && selectedThreadId.value === selectedThreadIdBeforeRouteSync) {
+    await selectThread(selectedThreadId.value)
+  }
   startPolling()
 }
 
@@ -1618,7 +1731,7 @@ async function syncThreadSelectionWithRoute(): Promise<void> {
   isRouteSyncInProgress.value = true
 
   try {
-    if (route.name === 'home' || route.name === 'skills') {
+    if (route.name === 'home' || route.name === 'skills' || route.name === 'github-trending') {
       if (selectedThreadId.value !== '') {
         await selectThread('')
       }
@@ -1665,7 +1778,7 @@ watch(
   async (threadId) => {
     if (!hasInitialized.value) return
     if (isRouteSyncInProgress.value) return
-    if (isHomeRoute.value || isSkillsRoute.value) return
+    if (isNonThreadRoute.value) return
 
     if (!threadId) {
       if (route.name !== 'home') {
@@ -1682,19 +1795,36 @@ watch(
 watch(
   () => githubTipsScope.value,
   () => {
-    if (!showGithubTrendingProjects.value) return
-    void loadTrendingProjects()
+    if (!showGithubTrendingProjects.value || !isGithubTrendingRoute.value) return
+    scheduleTrendingProjectsLoad()
   },
 )
 
 watch(
   () => showGithubTrendingProjects.value,
   (enabled) => {
+    cancelPendingTrendingProjectsLoad()
     if (!enabled) {
+      trendingProjectsRequestToken += 1
+      isTrendingProjectsLoading.value = false
       trendingProjects.value = []
+      lastLoadedGithubTipsScope.value = ''
       return
     }
-    void loadTrendingProjects()
+    scheduleTrendingProjectsLoad()
+  },
+)
+
+watch(
+  () => route.name,
+  (name) => {
+    if (name === 'github-trending') {
+      scheduleTrendingProjectsLoad()
+      return
+    }
+    trendingProjectsRequestToken += 1
+    isTrendingProjectsLoading.value = false
+    cancelPendingTrendingProjectsLoad()
   },
 )
 
@@ -1830,6 +1960,8 @@ async function submitFirstMessageForNewThread(
 
 .sidebar-scrollable {
   @apply flex-1 min-h-0 overflow-y-auto py-4 px-2 flex flex-col gap-2;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .content-root {
@@ -1843,7 +1975,7 @@ async function submitFirstMessageForNewThread(
 }
 
 .sidebar-search-toggle {
-  @apply h-7 w-7 rounded-xl border border-transparent bg-transparent text-[#6e6458] flex items-center justify-center transition hover:border-[#ddd5c7] hover:bg-[#fffdf8];
+  @apply h-7 w-7 rounded-xl border border-transparent bg-transparent text-[#6e6458] flex items-center justify-center transition-colors duration-100 hover:border-[#ddd5c7] hover:bg-[#fffdf8];
 }
 
 .sidebar-search-toggle[aria-pressed='true'] {
@@ -1867,15 +1999,23 @@ async function submitFirstMessageForNewThread(
 }
 
 .sidebar-search-clear {
-  @apply w-5 h-5 rounded-lg text-[#9a907f] flex items-center justify-center transition hover:bg-[#f1ebde] hover:text-[#544a3d];
+  @apply w-5 h-5 rounded-lg text-[#9a907f] flex items-center justify-center transition-colors duration-100 hover:bg-[#f1ebde] hover:text-[#544a3d];
 }
 
 .sidebar-search-clear-icon {
   @apply w-3.5 h-3.5;
 }
 
+.sidebar-explore-nav {
+  @apply mx-2 grid grid-cols-2 gap-2;
+}
+
 .sidebar-skills-link {
-  @apply mx-2 flex items-center rounded-2xl border border-transparent bg-transparent px-3 py-2 text-sm text-[#5b5146] transition hover:bg-[#ece4d6] hover:text-[#2d261f] cursor-pointer;
+  @apply mx-2 flex items-center rounded-2xl border border-transparent bg-transparent px-3 py-2 text-sm text-[#5b5146] transition-colors duration-100 hover:bg-[#ece4d6] hover:text-[#2d261f] cursor-pointer;
+}
+
+.sidebar-explore-nav .sidebar-skills-link {
+  @apply mx-0 justify-center;
 }
 
 .sidebar-skills-link.is-active {
@@ -1887,7 +2027,7 @@ async function submitFirstMessageForNewThread(
 }
 
 .desktop-refresh-button {
-  @apply inline-flex items-center gap-1 rounded-full border border-[#d6c9b6] bg-[#fffdf8] px-2.5 py-1 text-[11px] font-semibold text-[#544a3d] transition hover:border-[#bca98d] hover:bg-[#f7f1e5] hover:text-[#1f2937] disabled:cursor-not-allowed disabled:opacity-60;
+  @apply inline-flex items-center gap-1 rounded-full border border-[#d6c9b6] bg-[#fffdf8] px-2.5 py-1 text-[11px] font-semibold text-[#544a3d] transition-colors duration-100 hover:border-[#bca98d] hover:bg-[#f7f1e5] hover:text-[#1f2937] disabled:cursor-not-allowed disabled:opacity-60;
 }
 
 .desktop-refresh-button[data-busy='true'] {
@@ -2074,7 +2214,7 @@ async function submitFirstMessageForNewThread(
 }
 
 .sidebar-settings-button {
-  @apply flex items-center gap-2 w-full rounded-2xl border border-transparent bg-transparent px-3 py-2 text-sm text-[#5b5146] transition hover:bg-[#ece4d6] hover:text-[#2d261f] cursor-pointer;
+  @apply flex items-center gap-2 w-full rounded-2xl border border-transparent bg-transparent px-3 py-2 text-sm text-[#5b5146] transition-colors duration-100 hover:bg-[#ece4d6] hover:text-[#2d261f] cursor-pointer;
 }
 
 .sidebar-settings-icon {
@@ -2086,7 +2226,7 @@ async function submitFirstMessageForNewThread(
 }
 
 .sidebar-settings-row {
-  @apply flex items-center justify-between w-full px-3 py-2.5 text-sm text-[#544a3d] border-0 bg-transparent transition hover:bg-[#f7f1e5] cursor-pointer;
+  @apply flex items-center justify-between w-full px-3 py-2.5 text-sm text-[#544a3d] border-0 bg-transparent transition-colors duration-100 hover:bg-[#f7f1e5] cursor-pointer;
 }
 
 .sidebar-settings-row--select {
@@ -2136,13 +2276,12 @@ async function submitFirstMessageForNewThread(
 
 .settings-panel-enter-active,
 .settings-panel-leave-active {
-  transition: all 150ms ease;
+  transition: opacity 90ms ease;
 }
 
 .settings-panel-enter-from,
 .settings-panel-leave-to {
   opacity: 0;
-  transform: translateY(8px);
 }
 
 .sidebar-settings-rate-limits {
@@ -2178,7 +2317,7 @@ async function submitFirstMessageForNewThread(
 }
 
 .desktop-refresh-confirm-button {
-  @apply inline-flex items-center justify-center rounded-full border border-[#d8cfbf] bg-[#fffdf8] px-4 py-2 text-sm font-semibold text-[#544a3d] transition hover:border-[#bca98d] hover:bg-[#f7f1e5];
+  @apply inline-flex items-center justify-center rounded-full border border-[#d8cfbf] bg-[#fffdf8] px-4 py-2 text-sm font-semibold text-[#544a3d] transition-colors duration-100 hover:border-[#bca98d] hover:bg-[#f7f1e5];
 }
 
 .desktop-refresh-confirm-button-primary {
@@ -2187,6 +2326,20 @@ async function submitFirstMessageForNewThread(
 
 .desktop-refresh-confirm-button-warning {
   @apply border-[#c2410c] bg-[#c2410c] hover:border-[#9a3412] hover:bg-[#9a3412];
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-panel-enter-active,
+  .settings-panel-leave-active,
+  .sidebar-search-toggle,
+  .sidebar-search-clear,
+  .sidebar-skills-link,
+  .desktop-refresh-button,
+  .sidebar-settings-button,
+  .sidebar-settings-row,
+  .desktop-refresh-confirm-button {
+    transition: none !important;
+  }
 }
 
 </style>

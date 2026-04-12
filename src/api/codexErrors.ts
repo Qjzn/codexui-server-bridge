@@ -40,6 +40,10 @@ export function extractErrorMessage(payload: unknown, fallback: string): string 
   return fallback
 }
 
+export function isAbortLikeError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError'
+}
+
 export function normalizeCodexApiError(error: unknown, fallback: string, method?: string): CodexApiError {
   if (error instanceof CodexApiError) {
     return error

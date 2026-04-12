@@ -377,7 +377,7 @@
                       class="thread-status-indicator"
                       :data-state="getThreadState(thread)"
                     />
-                    <button class="thread-pin-button" type="button" title="pin" @click="togglePin(thread.id)">
+                    <button class="thread-pin-button" type="button" title="置顶" @click="togglePin(thread.id)">
                       <IconTablerPin class="thread-icon" />
                     </button>
                   </span>
@@ -558,7 +558,8 @@ const DRAG_START_THRESHOLD_PX = 4
 const PROJECT_GROUP_EXPANDED_GAP_PX = 6
 const expandedProjects = ref<Record<string, boolean>>({})
 const collapsedProjects = ref<Record<string, boolean>>({})
-const pinnedThreadIds = ref<string[]>([])
+const PINNED_THREAD_STORAGE_KEY = 'codex-web-local.pinned-thread-ids.v1'
+const pinnedThreadIds = ref<string[]>(loadPinnedThreadIds())
 const openProjectMenuId = ref('')
 const openThreadMenuId = ref('')
 const projectMenuMode = ref<'actions' | 'rename'>('actions')
@@ -598,6 +599,27 @@ const projectGroupResizeObserver =
     : null
 const COLLAPSED_STORAGE_KEY = 'codex-web-local.collapsed-projects.v1'
 
+function normalizePinnedThreadIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+
+  const normalized: string[] = []
+  for (const item of value) {
+    if (typeof item !== 'string') continue
+    const threadId = item.trim()
+    if (!threadId || normalized.includes(threadId)) continue
+    normalized.push(threadId)
+  }
+  return normalized
+}
+
+function areStringArraysEqual(first: string[], second: string[]): boolean {
+  if (first.length !== second.length) return false
+  for (let index = 0; index < first.length; index += 1) {
+    if (first[index] !== second[index]) return false
+  }
+  return true
+}
+
 function loadCollapsedState(): Record<string, boolean> {
   if (typeof window === 'undefined') return {}
 
@@ -619,6 +641,30 @@ function loadThreadViewMode(): 'project' | 'chronological' {
   return raw === 'chronological' ? 'chronological' : 'project'
 }
 
+function loadPinnedThreadIds(): string[] {
+  if (typeof window === 'undefined') return []
+
+  try {
+    const raw = window.localStorage.getItem(PINNED_THREAD_STORAGE_KEY)
+    if (!raw) return []
+    return normalizePinnedThreadIds(JSON.parse(raw) as unknown)
+  } catch {
+    return []
+  }
+}
+
+function savePinnedThreadIds(value: string[]): void {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(PINNED_THREAD_STORAGE_KEY, JSON.stringify(value))
+}
+
+function setPinnedThreadIds(value: string[]): void {
+  const normalized = normalizePinnedThreadIds(value)
+  if (areStringArraysEqual(pinnedThreadIds.value, normalized)) return
+  pinnedThreadIds.value = normalized
+  savePinnedThreadIds(normalized)
+}
+
 collapsedProjects.value = loadCollapsedState()
 
 watch(
@@ -635,6 +681,27 @@ watch(threadViewMode, (value) => {
   window.localStorage.setItem(THREAD_VIEW_MODE_STORAGE_KEY, value)
 })
 
+watch(
+  [() => props.groups, () => props.isLoading],
+  ([groups]) => {
+    if (groups.length === 0) return
+
+    const availableThreadIds = new Set<string>()
+    for (const group of groups) {
+      for (const thread of group.threads) {
+        availableThreadIds.add(thread.id)
+      }
+    }
+
+    const nextPinnedThreadIds = normalizePinnedThreadIds(pinnedThreadIds.value)
+      .filter((threadId) => availableThreadIds.has(threadId))
+    if (!areStringArraysEqual(pinnedThreadIds.value, nextPinnedThreadIds)) {
+      setPinnedThreadIds(nextPinnedThreadIds)
+    }
+  },
+  { immediate: true, deep: true },
+)
+
 const normalizedSearchQuery = computed(() => props.searchQuery.trim().toLowerCase())
 
 const isSearchActive = computed(() => normalizedSearchQuery.value.length > 0)
@@ -644,104 +711,112 @@ const matchedThreadIdSet = computed(() => {
 })
 const pinnedThreadIdSet = computed(() => new Set(pinnedThreadIds.value))
 
-function threadMatchesSearch(thread: UiThread): boolean {
-  if (!isSearchActive.value) return true
-  if (matchedThreadIdSet.value) {
-    return matchedThreadIdSet.value.has(thread.id)
+function matchesThreadSearch(
+  thread: UiThread,
+  query: string,
+  matchedIds: Set<string> | null,
+): boolean {
+  if (!query) return true
+  if (matchedIds) {
+    return matchedIds.has(thread.id)
   }
-  const q = normalizedSearchQuery.value
-  return thread.title.toLowerCase().includes(q) || thread.preview.toLowerCase().includes(q)
+  return thread.title.toLowerCase().includes(query) || thread.preview.toLowerCase().includes(query)
 }
 
-const filteredGroups = computed<UiProjectGroup[]>(() => {
-  if (!isSearchActive.value) return props.groups
-  return props.groups
-    .map((group) => ({
-      ...group,
-      threads: group.threads.filter(threadMatchesSearch),
-    }))
-    .filter((group) => group.threads.length > 0)
-})
+function compareThreadByUpdatedAt(first: UiThread, second: UiThread): number {
+  const firstTimestamp = new Date(first.updatedAtIso || first.createdAtIso).getTime()
+  const secondTimestamp = new Date(second.updatedAtIso || second.createdAtIso).getTime()
+  return secondTimestamp - firstTimestamp
+}
 
-const isChronologicalView = computed(() => threadViewMode.value === 'chronological')
-
-const globalThreads = computed<UiThread[]>(() => {
-  const sourceGroups = filteredGroups.value
-  const rows: UiThread[] = []
-
-  for (const group of sourceGroups) {
-    for (const thread of group.threads) {
-      if (prioritizedThreadIdSet.value.has(thread.id)) continue
-      rows.push(thread)
-    }
-  }
-
-  return rows.sort((first, second) => {
-    const firstTimestamp = new Date(first.updatedAtIso || first.createdAtIso).getTime()
-    const secondTimestamp = new Date(second.updatedAtIso || second.createdAtIso).getTime()
-    return secondTimestamp - firstTimestamp
-  })
-})
-
-const threadById = computed(() => {
-  const map = new Map<string, UiThread>()
+const threadCollections = computed(() => {
+  const query = normalizedSearchQuery.value
+  const matchedIds = matchedThreadIdSet.value
+  const pinnedIds = pinnedThreadIds.value
+  const pinnedSet = new Set(pinnedIds)
+  const threadById = new Map<string, UiThread>()
+  const threadProjectNameById = new Map<string, string>()
+  const threadTimestampById = new Map<string, number>()
 
   for (const group of props.groups) {
     for (const thread of group.threads) {
-      map.set(thread.id, thread)
+      threadById.set(thread.id, thread)
+      threadProjectNameById.set(thread.id, group.projectName)
+      threadTimestampById.set(thread.id, new Date(thread.updatedAtIso || thread.createdAtIso).getTime())
     }
   }
 
-  return map
-})
-const threadProjectNameById = computed(() => {
-  const map = new Map<string, string>()
-  for (const group of props.groups) {
-    for (const thread of group.threads) {
-      map.set(thread.id, group.projectName)
-    }
-  }
-  return map
-})
-const unpinnedThreadsByProjectName = computed(() => {
-  const map = new Map<string, UiThread[]>()
-  for (const group of props.groups) {
-    const rows = group.threads.filter((thread) => !prioritizedThreadIdSet.value.has(thread.id))
-    map.set(group.projectName, rows)
-  }
-  return map
-})
-const threadTimestampById = computed(() => {
-  const map = new Map<string, number>()
-  for (const group of props.groups) {
-    for (const thread of group.threads) {
-      const timestamp = new Date(thread.updatedAtIso || thread.createdAtIso).getTime()
-      map.set(thread.id, timestamp)
-    }
-  }
-  return map
-})
+  const filteredGroups = query
+    ? props.groups
+      .map((group) => ({
+        ...group,
+        threads: group.threads.filter((thread) => matchesThreadSearch(thread, query, matchedIds)),
+      }))
+      .filter((group) => group.threads.length > 0)
+    : props.groups
 
-const pinnedThreads = computed(() =>
-  pinnedThreadIds.value
-    .map((threadId) => threadById.value.get(threadId) ?? null)
+  const runningThreads: UiThread[] = []
+  for (const group of filteredGroups) {
+    for (const thread of group.threads) {
+      if (thread.inProgress && !pinnedSet.has(thread.id)) {
+        runningThreads.push(thread)
+      }
+    }
+  }
+  runningThreads.sort(compareThreadByUpdatedAt)
+
+  const prioritizedThreadIdSet = new Set<string>([
+    ...pinnedIds,
+    ...runningThreads.map((thread) => thread.id),
+  ])
+
+  const pinnedThreads = pinnedIds
+    .map((threadId) => threadById.get(threadId) ?? null)
     .filter((thread): thread is UiThread => thread !== null)
-    .filter(threadMatchesSearch),
-)
-const runningThreads = computed<UiThread[]>(() =>
-  filteredGroups.value
-    .flatMap((group) => group.threads)
-    .filter((thread) => thread.inProgress && !pinnedThreadIdSet.value.has(thread.id))
-    .sort((first, second) => {
-      const firstTimestamp = new Date(first.updatedAtIso || first.createdAtIso).getTime()
-      const secondTimestamp = new Date(second.updatedAtIso || second.createdAtIso).getTime()
-      return secondTimestamp - firstTimestamp
-    }),
-)
-const prioritizedThreadIdSet = computed(() => new Set([
-  ...pinnedThreadIds.value,
-  ...runningThreads.value.map((thread) => thread.id),
-]))
+    .filter((thread) => matchesThreadSearch(thread, query, matchedIds))
+
+  const globalThreads: UiThread[] = []
+  for (const group of filteredGroups) {
+    for (const thread of group.threads) {
+      if (prioritizedThreadIdSet.has(thread.id)) continue
+      globalThreads.push(thread)
+    }
+  }
+  globalThreads.sort(compareThreadByUpdatedAt)
+
+  const unpinnedThreadsByProjectName = new Map<string, UiThread[]>()
+  for (const group of props.groups) {
+    const rows = group.threads.filter((thread) => !prioritizedThreadIdSet.has(thread.id))
+    unpinnedThreadsByProjectName.set(group.projectName, rows)
+  }
+
+  return {
+    filteredGroups,
+    globalThreads,
+    threadById,
+    threadProjectNameById,
+    threadTimestampById,
+    unpinnedThreadsByProjectName,
+    pinnedThreads,
+    runningThreads,
+    prioritizedThreadIdSet,
+  }
+})
+
+function threadMatchesSearch(thread: UiThread): boolean {
+  return matchesThreadSearch(thread, normalizedSearchQuery.value, matchedThreadIdSet.value)
+}
+
+const filteredGroups = computed<UiProjectGroup[]>(() => threadCollections.value.filteredGroups)
+const isChronologicalView = computed(() => threadViewMode.value === 'chronological')
+const globalThreads = computed<UiThread[]>(() => threadCollections.value.globalThreads)
+const threadById = computed(() => threadCollections.value.threadById)
+const threadProjectNameById = computed(() => threadCollections.value.threadProjectNameById)
+const unpinnedThreadsByProjectName = computed(() => threadCollections.value.unpinnedThreadsByProjectName)
+const threadTimestampById = computed(() => threadCollections.value.threadTimestampById)
+const pinnedThreads = computed(() => threadCollections.value.pinnedThreads)
+const runningThreads = computed<UiThread[]>(() => threadCollections.value.runningThreads)
+const prioritizedThreadIdSet = computed(() => threadCollections.value.prioritizedThreadIdSet)
 
 const projectedDropProjectIndex = computed<number | null>(() => {
   const drag = activeProjectDrag.value
@@ -850,11 +925,11 @@ function isPinned(threadId: string): boolean {
 
 function togglePin(threadId: string): void {
   if (isPinned(threadId)) {
-    pinnedThreadIds.value = pinnedThreadIds.value.filter((id) => id !== threadId)
+    setPinnedThreadIds(pinnedThreadIds.value.filter((id) => id !== threadId))
     return
   }
 
-  pinnedThreadIds.value = [threadId, ...pinnedThreadIds.value]
+  setPinnedThreadIds([threadId, ...pinnedThreadIds.value])
 }
 
 function onSelect(threadId: string): void {
@@ -952,7 +1027,7 @@ function closeDeleteThreadDialog(): void {
 function submitDeleteThread(): void {
   const threadId = deleteThreadDialogThreadId.value
   if (!threadId) return
-  pinnedThreadIds.value = pinnedThreadIds.value.filter((id) => id !== threadId)
+  setPinnedThreadIds(pinnedThreadIds.value.filter((id) => id !== threadId))
   emit('archive', threadId)
   closeDeleteThreadDialog()
 }
@@ -1565,7 +1640,7 @@ onBeforeUnmount(() => {
 }
 
 .organize-menu-trigger {
-  @apply h-7 w-7 rounded-xl text-[#73695d] flex items-center justify-center transition hover:bg-[#ece4d6] hover:text-[#433b31];
+  @apply h-7 w-7 rounded-xl text-[#73695d] flex items-center justify-center transition-colors duration-100 hover:bg-[#ece4d6] hover:text-[#433b31];
 }
 
 .organize-menu-panel {
@@ -1585,7 +1660,7 @@ onBeforeUnmount(() => {
 }
 
 .thread-start-button {
-  @apply h-7 w-7 rounded-xl text-[#73695d] flex items-center justify-center transition hover:bg-[#ece4d6] hover:text-[#433b31];
+  @apply h-7 w-7 rounded-xl text-[#73695d] flex items-center justify-center transition-colors duration-100 hover:bg-[#ece4d6] hover:text-[#433b31];
 }
 
 .thread-tree-loading {
@@ -1599,12 +1674,7 @@ onBeforeUnmount(() => {
 }
 
 .thread-loading-skeleton::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.65) 50%, rgba(255,255,255,0) 100%);
-  transform: translateX(-100%);
-  animation: thread-skeleton-sweep 1.2s ease-in-out infinite;
+  display: none;
 }
 
 .thread-tree-no-results {
@@ -1616,7 +1686,7 @@ onBeforeUnmount(() => {
 }
 
 .project-group {
-  @apply m-0 rounded-[22px] border border-transparent transition-[border-color,box-shadow,background-color];
+  @apply m-0 rounded-[22px] border border-transparent;
   background: linear-gradient(180deg, rgba(255,252,247,0.72) 0%, rgba(246,240,229,0.82) 100%);
 }
 
@@ -1729,11 +1799,11 @@ onBeforeUnmount(() => {
 }
 
 .thread-left-stack {
-  @apply relative w-4 h-4 flex items-center justify-center;
+  @apply relative w-5 h-5 flex items-center justify-center;
 }
 
 .thread-pin-button {
-  @apply absolute inset-0 w-4 h-4 rounded text-[#6e6458] opacity-0 pointer-events-none transition flex items-center justify-center;
+  @apply absolute inset-[-2px] z-[1] w-5 h-5 rounded-md text-[#6e6458] opacity-0 pointer-events-none transition-colors duration-100 flex items-center justify-center;
 }
 
 .thread-main-button {
@@ -1757,7 +1827,7 @@ onBeforeUnmount(() => {
 }
 
 .thread-status-indicator {
-  @apply w-2.5 h-2.5 rounded-full;
+  @apply w-2.5 h-2.5 rounded-full pointer-events-none transition-opacity duration-150 ease-out;
 }
 
 .thread-row-meta {
@@ -1809,7 +1879,7 @@ onBeforeUnmount(() => {
 }
 
 .thread-show-more-button {
-  @apply block mx-auto rounded-full px-3 py-1 text-sm font-medium text-[#6f6558] transition hover:text-[#2d261f] hover:bg-[#ece4d6];
+  @apply block mx-auto rounded-full px-3 py-1 text-sm font-medium text-[#6f6558] transition-colors duration-100 hover:text-[#2d261f] hover:bg-[#ece4d6];
 }
 
 .project-header-row:hover .project-icon-folder {
@@ -1821,12 +1891,17 @@ onBeforeUnmount(() => {
 }
 
 .thread-row[data-active='true'] {
-  @apply border-[#cfc3ae] bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(240,233,222,1)_100%)] shadow-[0_10px_24px_-18px_rgba(31,41,55,0.5)];
+  @apply border-[#cfc3ae] bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(240,233,222,1)_100%)] shadow-[0_8px_18px_-22px_rgba(31,41,55,0.28)];
 }
 
 .thread-row:hover .thread-pin-button,
 .thread-row:focus-within .thread-pin-button {
   @apply opacity-100 pointer-events-auto;
+}
+
+.thread-pin-button:hover,
+.thread-pin-button:focus-visible {
+  @apply bg-[#efe7d9] text-[#433b31] outline-none;
 }
 
 .thread-status-indicator[data-state='unread'] {
@@ -1894,13 +1969,16 @@ onBeforeUnmount(() => {
   @apply bg-rose-600 text-white hover:bg-rose-700;
 }
 
-@keyframes thread-skeleton-sweep {
-  0% {
-    transform: translateX(-100%);
+@media (prefers-reduced-motion: reduce) {
+  .thread-status-indicator[data-state='working'] {
+    animation: none !important;
   }
 
-  100% {
-    transform: translateX(100%);
+  .organize-menu-trigger,
+  .thread-start-button,
+  .thread-pin-button,
+  .thread-show-more-button {
+    transition: none !important;
   }
 }
 </style>

@@ -23,6 +23,11 @@ const router = createRouter({
       component: EmptyRouteView,
     },
     {
+      path: '/github-trending',
+      name: 'github-trending',
+      component: EmptyRouteView,
+    },
+    {
       path: '/new-thread',
       redirect: { name: 'home' },
     },
