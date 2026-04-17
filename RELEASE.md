@@ -1,55 +1,63 @@
-# Release Guide
+# 发版说明
 
-This fork publishes GitHub-first releases for Windows-friendly self-hosting.
+本仓库使用 GitHub Release 作为主发版方式，版本命名采用：
 
-## Naming
+- `v0.1.59-bridge.1`
+- `v0.1.59-bridge.2`
 
-Use tags like:
+这样可以和 upstream / npm 基础版本区分开，同时保持桥接版自己的节奏。
 
-- `v0.1.58-bridge.1`
-- `v0.1.58-bridge.2`
+## 本地检查清单
 
-That keeps fork releases easy to distinguish from upstream npm versions.
-
-## Local Checklist
-
-1. Make sure `main` contains the final README and install flow updates.
-2. Run:
+1. 确认 `main` 已包含本次最终代码、README、更新日志和发版说明。
+2. 运行：
 
    ```powershell
    npm ci
    npm run build
-   powershell -ExecutionPolicy Bypass -File .\scripts\package-release.ps1 -Version v0.1.58-bridge.1
+   powershell -ExecutionPolicy Bypass -File .\scripts\package-release.ps1 -Version v0.1.59-bridge.1
    ```
 
-3. Verify the generated files inside `artifacts/`:
+3. 检查 `artifacts/` 中是否生成：
    - `codexui-server-bridge-<version>.zip`
    - `codexui-server-bridge-<version>.sha256`
-4. Smoke-test the one-command installer or `.\setup.ps1`.
+4. 至少完成一轮本地 smoke：
+   - `/health`
+   - 首页加载
+   - 线程页
+   - 关键交互
 
-## Publish
+## 发布方式
 
-Push a tag:
+推送主分支和标签：
 
 ```powershell
-git tag v0.1.58-bridge.1
-git push publish v0.1.58-bridge.1
+git push publish main
+git tag v0.1.59-bridge.1
+git push publish v0.1.59-bridge.1
 ```
 
-The `Release` workflow will:
+Release 工作流会自动完成：
 
-1. install dependencies
-2. build the project
-3. package a release zip
-4. publish a GitHub Release with generated notes
+1. 安装依赖
+2. 构建项目
+3. 打包 zip 与 sha256
+4. 发布 GitHub Release
 
-## What Goes Into The Release Bundle
+## Release 包内容
 
-The release zip includes:
+Release 压缩包默认包含：
 
-- built frontend and CLI artifacts
-- Windows bootstrap and install scripts
-- source files for local rebuilds
-- README, docs, and example config
+- 已构建的前端和 CLI
+- Windows 安装与启动脚本
+- 源码
+- README / docs / 示例配置
 
-This keeps the release bundle useful for both beginners and maintainers.
+## 文档维护约定
+
+当前仓库文档默认使用中文：
+
+- `README.md` 作为中文主文档
+- `README.zh-CN.md` 只保留兼容跳转
+- 更新日志统一写入 `docs/changelog.zh-CN.md`
+- `.github/release-body.md` 默认使用中文

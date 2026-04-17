@@ -1,28 +1,21 @@
 # codexui-server-bridge
 
-OpenAI Codex web UI and browser bridge for Windows, Linux, Android, Termux, and Windows Server.
+OpenAI Codex 浏览器 UI 与桥接服务，适合 Windows、Linux、Android、Termux 与 Windows Server。
 
-## Fastest Deploy
+## 快速链接
 
-Repository:
+- 中文主文档: [README.md](./README.md)
+- 中文更新日志: [docs/changelog.zh-CN.md](./docs/changelog.zh-CN.md)
+- 中文发版说明: [RELEASE.md](./RELEASE.md)
+- 中文部署提示词: [docs/deploy-with-codex.zh-CN.md](./docs/deploy-with-codex.zh-CN.md)
+- English deploy prompt: [docs/deploy-with-codex.en.md](./docs/deploy-with-codex.en.md)
 
-```text
-https://github.com/Qjzn/codexui-server-bridge
-```
+## 隐私说明
 
-Use Codex on the target machine and point it at this repo with the built-in deploy prompt:
+本次 Release 说明默认只保留通用示例，不包含：
 
-- English: [docs/deploy-with-codex.en.md](./docs/deploy-with-codex.en.md)
-- 中文: [docs/deploy-with-codex.zh-CN.md](./docs/deploy-with-codex.zh-CN.md)
-
-## Quick Links
-
-- English README: [README.md](./README.md)
-- 中文说明: [README.zh-CN.md](./README.zh-CN.md)
-- Windows Server guide: [docs/windows-server.md](./docs/windows-server.md)
-
-## Privacy
-
-This release uses generic examples only.
-No personal usernames, local IPs, passwords, or machine-specific paths are included in the release notes.
-
+- 私人账号
+- 本地密码
+- 私有 IP
+- 个人目录
+- 机器专属路径

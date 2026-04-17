@@ -2273,12 +2273,6 @@ export function useDesktopState() {
     }
   }
 
-  function appendLiveReasoningText(threadId: string, delta: string): void {
-    if (!threadId) return
-    const previous = liveReasoningTextByThreadId.value[threadId] ?? ''
-    setLiveReasoningText(threadId, `${previous}${delta}`)
-  }
-
   function clearLiveReasoningForThread(threadId: string): void {
     if (!threadId) return
     if (!(threadId in liveReasoningTextByThreadId.value)) return
@@ -4264,14 +4258,6 @@ export function useDesktopState() {
     queueProcessingByThreadId.value = {}
   }
 
-  function requestImmediateSync(): void {
-    void syncThreadStatus({
-      includeThreadList: true,
-      forceMessageRefresh: true,
-      urgent: true,
-    })
-  }
-
   const selectedThreadQueuedMessages = computed<QueuedMessage[]>(() => {
     const threadId = selectedThreadId.value
     if (!threadId) return []
@@ -4358,7 +4344,6 @@ export function useDesktopState() {
     removeProject,
     reorderProject,
     pinProjectToTop,
-    requestImmediateSync,
     startPolling,
     stopPolling,
   }

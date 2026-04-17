@@ -1,152 +1,108 @@
 # codexui-server-bridge
 
-### OpenAI Codex web UI and browser bridge for Windows, Linux, Android, Termux, and Windows Server
+OpenAI Codex 的浏览器 UI 和桥接服务，适合 Windows、Windows Server、Linux、Android、Termux、局域网和远程自托管访问。
 
-[![npm](https://img.shields.io/npm/v/codexapp?style=for-the-badge&logo=npm&logoColor=white)](https://www.npmjs.com/package/codexapp)
-[![CI](https://img.shields.io/github/actions/workflow/status/Qjzn/codexui-server-bridge/ci.yml?branch=main&style=for-the-badge&label=CI)](https://github.com/Qjzn/codexui-server-bridge/actions/workflows/ci.yml)
-[![platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20Android-blue?style=for-the-badge)](#-quick-start)
-[![node](https://img.shields.io/badge/Node-18%2B-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
-[![license](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](./LICENSE)
+默认中文说明见本文件。
 
-> **Browser-accessible OpenAI Codex UI with the simplest deploy path: give Codex this repo URL and one prompt.**
->  
-> **This fork exposes Codex app-server through a stable web UI for Windows desktops, Windows Server, Linux hosts, Android browsers, and remote development boxes.**
->
-> This fork focuses on Windows server deployment, LAN access, stable browser entry points, and config-driven self-hosting.
-
-- English README: `README.md`
-- 中文说明: [README.zh-CN.md](./README.zh-CN.md)
-- Codex deploy prompt: [docs/deploy-with-codex.en.md](./docs/deploy-with-codex.en.md)
+- 中文兼容页: [README.zh-CN.md](./README.zh-CN.md)
+- 中文更新日志: [docs/changelog.zh-CN.md](./docs/changelog.zh-CN.md)
+- 中文发版说明: [RELEASE.md](./RELEASE.md)
 - 中文部署提示词: [docs/deploy-with-codex.zh-CN.md](./docs/deploy-with-codex.zh-CN.md)
+- English deploy prompt: [docs/deploy-with-codex.en.md](./docs/deploy-with-codex.en.md)
 
-## Fastest Deploy
+## 项目定位
 
-Use this if Codex already has terminal access on the target machine.
+这个 fork 的目标很明确：
 
-1. Open Codex on the target machine.
-2. Tell it to inspect this repository:
+- 给 Codex 提供一个稳定的浏览器入口
+- 适合 Windows / Windows Server 上长期运行
+- 适合手机浏览器、局域网、反向代理和远程访问
+- 尽量减少手工配置，让新手也能部署
+
+当前重点能力：
+
+- 固定端口和配置文件驱动启动
+- Web UI 与本地 Codex app-server 桥接
+- 手机端和桌面端统一访问
+- 本地文件浏览 / 编辑 / 图片查看
+- 桌面端刷新辅助
+- 更稳定的线程状态恢复、消息队列和移动端体验
+
+## 最快部署方式
+
+如果目标机器上的 Codex 已经可以执行命令，最快的方式不是手动装，而是直接让 Codex 自己部署。
+
+仓库地址：
 
 ```text
 https://github.com/Qjzn/codexui-server-bridge
 ```
 
-3. Paste this prompt:
+把下面这段提示词直接给目标机器上的 Codex：
 
 ```text
-Open and inspect https://github.com/Qjzn/codexui-server-bridge.
-Deploy this project on this machine using the simplest supported path.
+打开并检查 https://github.com/Qjzn/codexui-server-bridge 这个仓库。
+请在这台机器上用最简单、最稳的方式部署这个项目。
 
-Requirements:
-- create a stable Codex web UI service on port 7420
-- prefer the repo's built-in bootstrap or setup scripts when possible
-- preserve existing Codex login if it is already configured
-- enable local browser access and LAN access when possible
-- configure auto-start if the machine allows it
-- when finished, print the local URL, LAN URL, password, and restart command
+要求：
+- 创建一个稳定的 Codex Web UI 服务，端口固定为 7420
+- 尽量优先使用仓库里自带的 bootstrap 或 setup 脚本
+- 如果这台机器已经登录过 Codex，就尽量复用现有登录态
+- 尽量开启本机浏览器访问和局域网访问
+- 如果机器允许，配置开机或登录后自动启动
+- 完成后输出：本机访问地址、局域网访问地址、密码、重启命令
 
-Do the work directly instead of only describing the steps.
+直接执行部署，不要只给步骤说明。
 ```
 
-If you want the Chinese version of the same prompt, use [docs/deploy-with-codex.zh-CN.md](./docs/deploy-with-codex.zh-CN.md).
-
-## What This Repo Gives You
-
-- OpenAI Codex in a browser
-- a stable `7420` entry point on Windows or Windows Server
-- LAN and phone access without building your own bridge
-- health checks and config-driven startup
-- local file browse and edit endpoints from Codex replies
-- desktop-app refresh support for mixed web and Windows desktop workflows
-
-## Manual Install
-
-![Three-step Windows install](docs/one-command-windows.svg)
-If you want to install it yourself on Windows, run:
+## Windows 一条命令安装
 
 ```powershell
 Set-ExecutionPolicy Bypass -Scope Process -Force; irm https://raw.githubusercontent.com/Qjzn/codexui-server-bridge/main/scripts/bootstrap-windows.ps1 | iex
 ```
 
-Prefer a ZIP release?
+安装脚本会自动完成这些事：
 
-If you would rather download a bundle instead of using the one-liner, use the latest asset from [Releases](https://github.com/Qjzn/codexui-server-bridge/releases) and then run:
+- 安装可用的 Node.js
+- 下载仓库到本地
+- 构建前端和 CLI
+- 生成默认配置
+- 创建启动脚本
+- 尝试放通 `7420`
+- 立即启动服务
 
-```powershell
-.\setup.ps1
-```
+安装完成后，直接在浏览器或手机里打开输出的地址即可。
 
-Need custom port or password?
+## 手动运行
 
-If you want to customize the default port or password, use the scriptblock form:
-
-```powershell
-& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/Qjzn/codexui-server-bridge/main/scripts/bootstrap-windows.ps1'))) `
-  -Port 7420 `
-  -Password 'change-me'
-```
-
-## ⚡ Quick Start
+### 本地快速启动
 
 ```bash
 npx codexapp
 ```
 
-Then open:
+默认打开：
 
 ```text
 http://localhost:18923
 ```
 
-### Linux 🐧
-```bash
-node -v   # should be 18+
-npx codexapp
-```
-
-### Windows 🪟 (PowerShell)
-```powershell
-node -v   # 18+
-npx codexapp
-```
-
-You can also pin the bind address and skip the default tunnel:
+### 固定到 7420
 
 ```powershell
 npx codexapp --host 0.0.0.0 --port 7420 --no-tunnel --password "change-me"
 ```
 
-### Termux (Android) 🤖
-```bash
-pkg update && pkg upgrade -y
-pkg install nodejs -y
-npx codexapp
-```
+### 配置文件方式
 
-Android background requirements:
-
-1. Keep `codexapp` running in the current Termux session (do not close it).
-2. In Android settings, disable battery optimization for `Termux`.
-3. Keep the persistent Termux notification enabled so Android is less likely to kill it.
-4. Optional but recommended in Termux:
-```bash
-termux-wake-lock
-```
-5. Open the shown URL in your Android browser. If the app is killed, return to Termux and run `npx codexapp` again.
-
----
-
-## ⚙️ Config File Support
-
-`codexapp` can now load launch options from JSON so Windows servers and long-running setups do not need hard-coded batch files.
-
-Search order:
+优先级：
 
 1. `--config <path>`
 2. `CODEXUI_CONFIG`
 3. `./codexui.config.json`
 4. `~/.codexui/config.json`
 
-Example:
+示例：
 
 ```json
 {
@@ -159,212 +115,54 @@ Example:
 }
 ```
 
-Tracked example file:
+示例配置：
 
-- [`codexui.config.example.json`](./codexui.config.example.json)
+- [codexui.config.example.json](./codexui.config.example.json)
 
----
+## 典型使用场景
 
-## 🪟 Windows Server Install
+- Windows 电脑本机跑 Codex，手机浏览器访问
+- Windows Server 常驻跑 `7420`
+- Linux 开发机通过浏览器访问 Codex
+- Tailscale / 内网 / 反代后远程访问
+- 同时使用 Web 端和官方桌面端
 
-For source-based Windows deployments, the repo now includes a helper script that installs dependencies, builds the project, writes a stable config file, creates a launcher, and can optionally open the firewall port:
+## 最近维护重点
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\install-windows-server.ps1 `
-  -ProjectPath "C:\Users\SW\Documents\Playground" `
-  -Port 7420 `
-  -Password "change-me" `
-  -OpenFirewall `
-  -StartNow
-```
+当前版本主线已经覆盖这些改进：
 
-More details:
+- 线程切换过程中更快响应，减少“点第二个线程还卡在第一个”的情况
+- 空线程 deep link、空线程移除、空线程恢复边界收口
+- 图片上传与本地图片回显链路修正
+- 执行中新增消息默认进入队列，支持引用立即执行
+- 队列持久化与稳定性修复，避免提前出队导致丢消息
+- 会话区命令卡片只保留执行中状态，完成后不再堆积
+- 侧栏新增“全部已读”
+- “刷新桌面端”入口改到设置面板
+- 全局 UI/UX 收口，手机端和侧栏交互更简约
 
-- [`docs/windows-server.md`](./docs/windows-server.md)
-- [`RELEASE.md`](./RELEASE.md)
+详细记录见：
 
-The installer defaults to server-friendly settings:
+- [docs/changelog.zh-CN.md](./docs/changelog.zh-CN.md)
 
-- tunnel disabled
-- browser auto-open disabled
+## 相关文档
 
-Health endpoints:
+- Windows Server 安装: [docs/windows-server.md](./docs/windows-server.md)
+- 发版说明: [RELEASE.md](./RELEASE.md)
+- 更新日志: [docs/changelog.zh-CN.md](./docs/changelog.zh-CN.md)
 
-- `GET /health`
-- `GET /codex-api/health`
+## 隐私与发布约定
 
----
+发布说明和 Release 资产默认只保留通用示例，不包含：
 
-## iPhone / iPad via Tailscale Serve
+- 私人账号
+- 本地密码
+- 私有 IP
+- 个人目录
+- 机器专属路径
 
-If you want to use codexUI from iPhone or iPad Safari, serving it over HTTPS is recommended.
+## Fork 来源
 
-A practical private setup is to run codexUI locally and publish it inside your tailnet with Tailscale Serve:
-
-```powershell
-npx codexapp --no-tunnel --port 5999
-tailscale serve --bg 5999
-```
-
-Then open:
-
-```text
-https://<your-machine>.<your-tailnet>.ts.net
-```
-
-This setup worked well in practice for:
-
-- iPhone Safari access
-- Add to Home Screen
-- the built-in dictation / transcription feature in the app
-- viewing the same projects and conversations from the Windows host
-
-Notes:
-
-- Tailscale Serve keeps access private to your tailnet
-- on iOS, HTTPS / secure context appears to be important for mobile browser access and dictation
-- some minor mobile Safari CSS issues may still exist, but they do not prevent normal use
-- depending on proxying details, authentication behavior may differ from direct remote access
-- if conversations created in the web UI do not immediately appear in the Windows app, restarting the Windows app may refresh them
-
----
-
-## ✨ Features
-- 🚀 One-command launch with `npx codexapp`
-- 🌍 Cross-platform support for Linux, Windows, and Termux on Android
-- 🖥️ Browser-first Codex UI flow on `http://localhost:18923`
-- 🌐 LAN-friendly access from other devices on the same network
-- 🧪 Remote/headless-friendly setup for server-based Codex usage
-- 🔌 Works with reverse proxies and tunneling setups
-- ⚡ No global install required for quick experimentation
-- ⚙️ Config-driven startup with `--config` and default config discovery
-- ❤️ Lightweight health endpoints for process managers and reverse proxies
-- 🎙️ Built-in hold-to-dictate voice input with transcription to composer draft
-- 🤖 Optional Telegram bot bridge: send messages to bot, forward into mapped thread, send assistant reply back to Telegram
-
-### Telegram Bot Bridge (Optional)
-
-Set these environment variables before starting `codexapp`:
-
-```bash
-export TELEGRAM_BOT_TOKEN="<your-telegram-bot-token>"
-export TELEGRAM_DEFAULT_CWD="$PWD" # optional, defaults to current working directory
-npx codexapp
-```
-
-Bot commands:
-
-- `/newthread` create and map a new Codex thread for this Telegram chat
-- `/thread <threadId>` map current Telegram chat to an existing thread
-- Any other text message is forwarded to the mapped thread
-
----
-
-## 🧩 Recent Product Features (from main commits)
-> **Not just launch. Actual UX upgrades.**
-
-- ⬇️ Conversation view no longer yanks you to the bottom while you are reading history; auto-follow now resumes only when you are already at the latest output
-- 🛟 Floating "back to latest output" button appears when you scroll up, with a visual cue when fresh output arrives below the fold
-- ⏳ Thread loading is less disruptive: existing messages stay visible and a lightweight inline sync bar replaces the old blocking-only loading state
-- 🔄 Thread status tracking is more robust during long-running tasks, with background reconciliation to reduce false "completed" states in the sidebar
-- 📡 Notification transport is more resilient now, with client-side reconnect handling and server-side WebSocket heartbeats to recover from stale streams
-- 🔗 Web messages now handle local Windows file links and common external hyperlink formats more reliably from the browser UI
-- ⚠️ Refreshing the official desktop app now warns when the current thread still looks busy, to reduce accidental task interruption
-- 🗂️ Searchable project picker in new-thread flow
-- ➕ Inline "Add new project" input inside picker (no browser prompt)
-- 📌 New projects get pinned to top automatically
-- 🧠 Smart default new-project name suggestion via server-side free-directory scan (`New Project (N)`)
-- 🔄 Project order persisted globally to workspace roots state
-- 🧵 Optimistic in-progress threads preserved during refresh/poll cycles
-- 📱 Mobile drawer sidebar in desktop layout (teleported overlay + swipe-friendly structure)
-- 🎛️ Skills Hub mobile-friendly spacing/toolbar layout improvements
-- 🪟 Skill detail modal tuned for mobile sheet-style behavior
-- 🧪 Skills Hub event typing fix for `SkillCard` select emit compatibility
-- 🎙️ Voice dictation flow in composer (`hold to dictate` -> transcribe -> append text)
-
----
-
-## 🌍 What Can You Do With This?
-
-| 🔥 Use Case | 💥 What You Get |
-|---|---|
-| 💻 Linux workstation | Run Codex UI in browser without depending on desktop shell |
-| 🪟 Windows machine | Launch web UI and access from Chrome/Edge quickly |
-| 📱 Termux on Android | Start service in Termux and control from mobile browser |
-| 🧪 Remote dev box | Keep Codex process on server, view UI from client device |
-| 🌐 LAN sharing | Open UI from another device on same network |
-| 🧰 Headless workflows | Keep terminal + browser split for productivity |
-| 🔌 Custom routing | Put behind reverse proxy/tunnel if needed |
-| ⚡ Fast experiments | `npx` run without full global setup |
-
----
-
-## 🖼️ Screenshots
-
-### Skills Hub
-![Skills Hub](docs/screenshots/skills-hub.png)
-
-### Chat
-![Chat](docs/screenshots/chat.png)
-
-### Mobile UI
-![Skills Hub Mobile](docs/screenshots/skills-hub-mobile.png)
-![Chat Mobile](docs/screenshots/chat-mobile.png)
-
----
-
-## 🏗️ Architecture
-
-```text
-┌─────────────────────────────┐
-│  Browser (Desktop/Mobile)   │
-└──────────────┬──────────────┘
-               │ HTTP/WebSocket
-┌──────────────▼──────────────┐
-│         codexapp            │
-│  (Express + Vue UI bridge)  │
-└──────────────┬──────────────┘
-               │ RPC/Bridge calls
-┌──────────────▼──────────────┐
-│      Codex App Server       │
-└─────────────────────────────┘
-```
-
----
-
-## 🎯 Requirements
-- ✅ Node.js `18+`
-- ✅ Codex app-server environment available
-- ✅ Browser access to host/port
-- ✅ Microphone permission (only for voice dictation)
-
----
-
-## 🐛 Troubleshooting
-
-| ❌ Problem | ✅ Fix |
-|---|---|
-| Port already in use | Run on a free port or stop old process |
-| `npx` fails | Update npm/node, then retry |
-| Termux install fails | `pkg update && pkg upgrade` then reinstall `nodejs` |
-| Build from source fails on Windows | Run `npm install` then `npm run build`; `build` no longer requires `pnpm` |
-| Can’t open from other device | Check firewall, bind address, and LAN routing |
-
----
-
-## 🤝 Contributing
-Issues and PRs are welcome.  
-Bring bug reports, platform notes, and setup improvements.
-
----
-
-## ⭐ Star This Repo
-If you believe Codex UI should be accessible from **any machine, any OS, any screen**, star this project and share it. ⭐
-
-<div align="center">
-Built for speed, portability, and a little bit of chaos 😏
-</div>
-
----
-
-Fork lineage: [pavel-voronin/codex-web-local](https://github.com/pavel-voronin/codex-web-local) -> [friuns2/codexui](https://github.com/friuns2/codexui) -> [Qjzn/codexui-server-bridge](https://github.com/Qjzn/codexui-server-bridge).
+[pavel-voronin/codex-web-local](https://github.com/pavel-voronin/codex-web-local)  
+→ [friuns2/codexui](https://github.com/friuns2/codexui)  
+→ [Qjzn/codexui-server-bridge](https://github.com/Qjzn/codexui-server-bridge)

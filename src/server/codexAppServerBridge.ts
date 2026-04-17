@@ -1,7 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { mkdtemp, readFile, readdir, rm, mkdir, stat, cp, lstat, readlink, symlink } from 'node:fs/promises'
-import { createReadStream, existsSync } from 'node:fs'
+import { mkdtemp, readFile, mkdir, stat } from 'node:fs/promises'
+import { createReadStream } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { request as httpRequest } from 'node:http'
 import { request as httpsRequest } from 'node:https'
@@ -500,10 +500,6 @@ async function listFilesWithRipgrep(cwd: string): Promise<string[]> {
 function getCodexHomeDir(): string {
   const codexHome = process.env.CODEX_HOME?.trim()
   return codexHome && codexHome.length > 0 ? codexHome : join(homedir(), '.codex')
-}
-
-function getSkillsInstallDir(): string {
-  return join(getCodexHomeDir(), 'skills')
 }
 
 async function runCommand(command: string, args: string[], options: { cwd?: string } = {}): Promise<void> {
