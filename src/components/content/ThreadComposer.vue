@@ -190,7 +190,7 @@
             :selected-prefix-icon="showFastModeModelIcon ? IconTablerBolt : null"
             placeholder="模型"
             open-direction="up"
-            :disabled="disabled || !activeThreadId || models.length === 0 || isTurnInProgress"
+            :disabled="disabled || !activeThreadId || models.length === 0"
             @update:model-value="onModelSelect"
           />
 
@@ -201,7 +201,7 @@
             placeholder="技能"
             search-placeholder="搜索技能..."
             open-direction="up"
-            :disabled="disabled || !activeThreadId || isTurnInProgress"
+            :disabled="disabled || !activeThreadId"
             @toggle="onSkillDropdownToggle"
           />
 
@@ -211,7 +211,7 @@
             :options="reasoningOptions"
             placeholder="思考强度"
             open-direction="up"
-            :disabled="disabled || !activeThreadId || isTurnInProgress"
+            :disabled="disabled || !activeThreadId"
             @update:model-value="onReasoningEffortSelect"
           />
         </div>
@@ -1539,19 +1539,14 @@ watch(
   }
 
   .thread-composer-control-strip {
-    @apply flex-1 gap-2 overflow-x-auto pr-1;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .thread-composer-control-strip::-webkit-scrollbar {
-    display: none;
+    @apply flex-1 min-w-0 gap-2 pr-0 overflow-visible;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .thread-composer-control {
-    flex: 0 0 auto;
-    min-width: 5.4rem;
-    max-width: 7rem;
+    min-width: 0;
+    max-width: none;
   }
 
   .thread-composer-actions {

@@ -261,10 +261,11 @@
           <template v-else>
             <div class="content-grid">
               <div class="content-thread">
-                <ThreadConversation :messages="filteredMessages" :is-loading="isLoadingMessages"
-                  :active-thread-id="composerThreadContextId" :cwd="composerCwd" :scroll-state="selectedThreadScrollState"
-                  :live-overlay="liveOverlay"
-                  :pending-requests="selectedThreadServerRequests"
+                <ThreadConversation :messages="displayedThreadMessages" :is-loading="isLoadingMessages"
+                  :active-thread-id="displayedThreadConversationId" :cwd="displayedThreadCwd" :scroll-state="displayedThreadScrollState"
+                  :live-overlay="displayedThreadLiveOverlay"
+                  :pending-requests="displayedThreadPendingRequests"
+                  :is-thread-switching="isThreadContentSwitching"
                   :show-empty-thread-actions="isRouteOnlyEmptyThread"
                   :is-turn-in-progress="isSelectedThreadInProgress"
                   :is-rolling-back="isRollingBack"
@@ -371,7 +372,7 @@ import {
   refreshDesktopApp,
   searchThreads,
 } from './api/codexGateway'
-import type { ReasoningEffort, SpeedMode, ThreadScrollState } from './types/codex'
+import type { ReasoningEffort, SpeedMode, ThreadScrollState, UiLiveOverlay, UiMessage, UiServerRequest } from './types/codex'
 import type { ComposerDraftPayload, ThreadComposerExposed } from './components/content/ThreadComposer.vue'
 import type { DesktopAppStatus, GithubTipsScope, GithubTrendingProject, TelegramStatus } from './api/codexGateway'
 import { getPathLeafName, getPathParent } from './pathUtils.js'
@@ -742,6 +743,13 @@ const composerCwd = computed(() => {
   if (isHomeRoute.value) return newThreadCwd.value.trim()
   return selectedThread.value?.cwd?.trim() ?? ''
 })
+const displayedThreadConversationId = ref('')
+const displayedThreadCwd = ref('')
+const displayedThreadMessages = ref<UiMessage[]>([])
+const displayedThreadPendingRequests = ref<UiServerRequest[]>([])
+const displayedThreadLiveOverlay = ref<UiLiveOverlay | null>(null)
+const displayedThreadScrollState = ref<ThreadScrollState | null>(null)
+const isThreadContentSwitching = ref(false)
 const isSelectedThreadInProgress = computed(() => !isHomeRoute.value && selectedThread.value?.inProgress === true)
 const threadStatusTone = computed<'live' | 'syncing' | 'warning' | 'danger'>(() => {
   if (selectedThreadServerRequests.value.length > 0) return 'warning'
@@ -816,6 +824,60 @@ const githubTipsScopeOptions = computed<Array<{ value: GithubTipsScope; label: s
   { value: 'trending-weekly', label: '趋势周榜' },
   { value: 'trending-monthly', label: '趋势月榜' },
 ])
+
+watch(
+  () => [
+    composerThreadContextId.value,
+    composerCwd.value,
+    filteredMessages.value,
+    selectedThreadServerRequests.value,
+    liveOverlay.value,
+    selectedThreadScrollState.value,
+    isLoadingMessages.value,
+    isHomeRoute.value,
+  ] as const,
+  ([
+    nextThreadId,
+    nextCwd,
+    nextMessages,
+    nextPendingRequests,
+    nextLiveOverlay,
+    nextScrollState,
+    loading,
+    homeRoute,
+  ]) => {
+    const hasDisplayedConversation =
+      displayedThreadMessages.value.length > 0 ||
+      displayedThreadPendingRequests.value.length > 0 ||
+      displayedThreadLiveOverlay.value !== null
+
+    if (!nextThreadId || homeRoute) {
+      isThreadContentSwitching.value = false
+      displayedThreadConversationId.value = nextThreadId
+      displayedThreadCwd.value = nextCwd
+      displayedThreadMessages.value = [...nextMessages]
+      displayedThreadPendingRequests.value = [...nextPendingRequests]
+      displayedThreadLiveOverlay.value = nextLiveOverlay
+      displayedThreadScrollState.value = nextScrollState
+      return
+    }
+
+    const isSwitchingToAnotherThread = displayedThreadConversationId.value !== '' && displayedThreadConversationId.value !== nextThreadId
+    if (loading && isSwitchingToAnotherThread && hasDisplayedConversation) {
+      isThreadContentSwitching.value = true
+      return
+    }
+
+    displayedThreadConversationId.value = nextThreadId
+    displayedThreadCwd.value = nextCwd
+    displayedThreadMessages.value = [...nextMessages]
+    displayedThreadPendingRequests.value = [...nextPendingRequests]
+    displayedThreadLiveOverlay.value = nextLiveOverlay
+    displayedThreadScrollState.value = nextScrollState
+    isThreadContentSwitching.value = false
+  },
+  { immediate: true },
+)
 const telegramStatusText = computed(() => {
   if (!telegramStatus.value.configured) return '未配置'
   const base = telegramStatus.value.active ? '在线' : '已配置（离线）'

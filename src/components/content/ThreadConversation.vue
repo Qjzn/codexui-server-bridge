@@ -1,23 +1,12 @@
 <template>
-  <section class="conversation-root">
-    <div v-if="showBlockingLoading" class="conversation-loading" aria-hidden="true">
-      <span class="conversation-loading-kicker">载入中</span>
-      <span class="conversation-loading-card conversation-loading-card-user">
-        <span class="conversation-loading-line conversation-loading-line-short" />
-      </span>
-      <span class="conversation-loading-card">
-        <span class="conversation-loading-line conversation-loading-line-wide" />
-        <span class="conversation-loading-line conversation-loading-line-medium" />
-        <span class="conversation-loading-line conversation-loading-line-short" />
-      </span>
-      <span class="conversation-loading-card">
-        <span class="conversation-loading-line conversation-loading-line-wide" />
-        <span class="conversation-loading-line conversation-loading-line-short" />
-      </span>
+  <section class="conversation-root" :class="{ 'conversation-root--switching': isThreadSwitchingState }">
+    <div v-if="showLoadingIndicator" class="conversation-status-loading" aria-live="polite">
+      <span class="conversation-status-loading-dot" />
+      <span class="conversation-status-loading-text">{{ loadingIndicatorText }}</span>
     </div>
 
     <div
-      v-else-if="!hasRenderableConversation"
+      v-if="!hasRenderableConversation && !props.isLoading"
       class="conversation-empty-state"
     >
       <p class="conversation-empty">当前会话还没有消息。</p>
@@ -32,12 +21,7 @@
     </div>
 
     <template v-else>
-      <div v-if="showInlineLoading" class="conversation-inline-loading" aria-live="polite">
-        <span class="conversation-inline-loading-bar" />
-        <span class="conversation-inline-loading-text">同步中...</span>
-      </div>
-
-      <ul ref="conversationListRef" class="conversation-list" @scroll="onConversationScroll">
+      <ul ref="conversationListRef" class="conversation-list" :class="{ 'conversation-list--switching': isThreadSwitchingState }" @scroll="onConversationScroll">
       <li
         v-for="request in pendingRequests"
         :key="`server-request:${request.id}`"
@@ -344,7 +328,10 @@
                   </span>
                 </div>
               </div>
-              <div v-if="liveOverlay.activityDetails.length > 0" class="live-overlay-detail-list">
+              <div
+                v-if="!liveOverlayCommandMessage && liveOverlay.activityDetails.length > 0"
+                class="live-overlay-detail-list"
+              >
                 <span
                   v-for="detail in liveOverlayDetails(liveOverlay)"
                   :key="detail"
@@ -353,8 +340,20 @@
                   {{ detail }}
                 </span>
               </div>
+              <section v-if="liveOverlayCommandMessage" class="live-overlay-command-panel">
+                <div class="cmd-row cmd-status-running live-overlay-command-row">
+                  <span class="cmd-status">{{ commandStatusLabel(liveOverlayCommandMessage) }}</span>
+                  <span v-if="commandDurationLabel(liveOverlayCommandMessage)" class="cmd-duration">
+                    {{ commandDurationLabel(liveOverlayCommandMessage) }}
+                  </span>
+                  <code class="cmd-label">{{ liveOverlayCommandMessage.commandExecution?.command || '（命令）' }}</code>
+                </div>
+                <div v-if="liveOverlayCommandOutput" class="live-overlay-command-output-wrap">
+                  <pre class="cmd-output live-overlay-command-output">{{ liveOverlayCommandOutput }}</pre>
+                </div>
+              </section>
               <p
-                v-if="liveOverlay.reasoningText"
+                v-else-if="liveOverlay.reasoningText"
                 class="live-overlay-reasoning"
                 ref="liveOverlayReasoningRef"
               >
@@ -532,6 +531,10 @@ function isCommandMessage(message: UiMessage): boolean {
   return message.messageType === 'commandExecution' && !!message.commandExecution
 }
 
+function isRunningCommandMessage(message: UiMessage): boolean {
+  return isCommandMessage(message) && message.commandExecution?.status === 'inProgress'
+}
+
 function isCommandExpanded(message: UiMessage): boolean {
   if (message.commandExecution?.status === 'inProgress') return true
   if (collapsingCommandIds.value.has(message.id)) return true
@@ -695,7 +698,26 @@ const props = defineProps<{
   isTurnInProgress?: boolean
   isRollingBack?: boolean
   showEmptyThreadActions?: boolean
+  isThreadSwitching?: boolean
 }>()
+
+const renderableMessages = computed<UiMessage[]>(() => (
+  props.messages.filter((message) => !isRunningCommandMessage(message))
+))
+
+const liveOverlayCommandMessage = computed<UiMessage | null>(() => {
+  const overlay = props.liveOverlay
+  if (!overlay || !overlay.activityLabel.includes('执行命令')) return null
+  for (let index = props.messages.length - 1; index >= 0; index -= 1) {
+    const candidate = props.messages[index]
+    if (candidate && isRunningCommandMessage(candidate)) return candidate
+  }
+  return null
+})
+
+const liveOverlayCommandOutput = computed<string>(() => (
+  liveOverlayCommandMessage.value?.commandExecution?.aggregatedOutput?.trim() ?? ''
+))
 
 const emit = defineEmits<{
   updateScrollState: [payload: { threadId: string; state: ThreadScrollState }]
@@ -834,15 +856,18 @@ const conversationListResizeObserver =
     })
     : null
 const hasRenderableConversation = computed(() => (
-  props.messages.length > 0 ||
+  renderableMessages.value.length > 0 ||
   props.pendingRequests.length > 0 ||
   props.liveOverlay !== null
 ))
-const showBlockingLoading = computed(() => props.isLoading && !hasRenderableConversation.value)
-const showInlineLoading = computed(() => props.isLoading && hasRenderableConversation.value)
+const isThreadSwitchingState = computed(() => props.isThreadSwitching === true && hasRenderableConversation.value)
+const showLoadingIndicator = computed(() => props.isLoading)
+const loadingIndicatorText = computed(() => {
+  if (props.isThreadSwitching === true) return '切换会话中...'
+  return hasRenderableConversation.value ? '同步中...' : '载入中...'
+})
 const showJumpToLatestButton = computed(() => (
   hasRenderableConversation.value &&
-  !showBlockingLoading.value &&
   !shouldLockToBottom()
 ))
 const overlayPrimaryPendingRequest = computed<UiServerRequest | null>(() => props.pendingRequests[0] ?? null)
@@ -871,7 +896,7 @@ const pendingRequestsHeight = computed(() => (
     total + (measuredPendingRequestHeightById.value[String(request.id)] ?? ESTIMATED_PENDING_REQUEST_HEIGHT_PX)
   ), 0) +
   conversationItemGap.value *
-    (props.pendingRequests.length > 0 && props.messages.length > 0
+    (props.pendingRequests.length > 0 && renderableMessages.value.length > 0
       ? props.pendingRequests.length
       : Math.max(props.pendingRequests.length - 1, 0))
 ))
@@ -897,21 +922,21 @@ const workedCommandsByMessageId = computed<Record<string, UiMessage[]>>(() => {
 
   return next
 })
-const shouldVirtualizeMessages = computed(() => props.messages.length >= VIRTUALIZE_MIN_MESSAGES)
+const shouldVirtualizeMessages = computed(() => renderableMessages.value.length >= VIRTUALIZE_MIN_MESSAGES)
 const virtualizedMessageMetrics = computed(() => {
   const cumulativeHeights: number[] = [0]
-  for (const message of props.messages) {
+  for (const message of renderableMessages.value) {
     const height = measuredMessageHeightById.value[message.id] ?? estimateMessageHeight(message)
     cumulativeHeights.push(cumulativeHeights[cumulativeHeights.length - 1] + height + conversationItemGap.value)
   }
 
-  const totalHeight = props.messages.length > 0
+  const totalHeight = renderableMessages.value.length > 0
     ? Math.max((cumulativeHeights[cumulativeHeights.length - 1] ?? 0) - conversationItemGap.value, 0)
     : 0
-  if (!shouldVirtualizeMessages.value || props.messages.length === 0) {
+  if (!shouldVirtualizeMessages.value || renderableMessages.value.length === 0) {
     return {
       startIndex: 0,
-      endIndex: props.messages.length,
+      endIndex: renderableMessages.value.length,
       cumulativeHeights,
       totalHeight,
     }
@@ -924,7 +949,7 @@ const virtualizedMessageMetrics = computed(() => {
 
   let startIndex = 0
   while (
-    startIndex < props.messages.length &&
+    startIndex < renderableMessages.value.length &&
     cumulativeHeights[startIndex + 1] < visibleStart
   ) {
     startIndex += 1
@@ -932,13 +957,13 @@ const virtualizedMessageMetrics = computed(() => {
 
   let endIndex = startIndex
   while (
-    endIndex < props.messages.length &&
+    endIndex < renderableMessages.value.length &&
     cumulativeHeights[endIndex] < visibleEnd
   ) {
     endIndex += 1
   }
 
-  endIndex = Math.min(props.messages.length, Math.max(endIndex + 1, startIndex + 1))
+  endIndex = Math.min(renderableMessages.value.length, Math.max(endIndex + 1, startIndex + 1))
 
   return {
     startIndex,
@@ -949,7 +974,7 @@ const virtualizedMessageMetrics = computed(() => {
 })
 const virtualizedMessages = computed<VirtualizedMessageEntry[]>(() => {
   const { startIndex, endIndex } = virtualizedMessageMetrics.value
-  return props.messages
+  return renderableMessages.value
     .slice(startIndex, endIndex)
     .map((message, index) => ({
       message,
@@ -2191,7 +2216,7 @@ function canShowMessageActions(message: UiMessage): boolean {
 
 function findPreviousVisibleMessage(index: number): UiMessage | null {
   for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
-    const candidate = props.messages[cursor]
+    const candidate = renderableMessages.value[cursor]
     if (!candidate || isCommandMessage(candidate)) continue
     return candidate
   }
@@ -2695,46 +2720,23 @@ onBeforeUnmount(() => {
   @apply relative h-full min-h-0 p-0 flex flex-col overflow-y-hidden overflow-x-visible bg-transparent border-none rounded-none;
 }
 
-.conversation-loading {
-  @apply flex flex-col gap-2 px-2 sm:px-5 py-2;
+.conversation-root--switching {
+  @apply overflow-hidden;
 }
 
-.conversation-loading-kicker {
-  @apply text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8f8577];
+.conversation-status-loading {
+  @apply sticky top-0 z-10 mx-2 sm:mx-5 mb-1.5 mt-1.5 flex items-center gap-2 rounded-full border border-[#e5dbca] bg-[#fffdf8]/92 px-3 py-1.5 text-xs text-[#7b7062];
+  backdrop-filter: blur(10px);
+  animation: conversationFadeIn 160ms ease-out;
 }
 
-.conversation-loading-card {
-  @apply block max-w-[min(72ch,100%)] rounded-[22px] border border-[#ece5d8] bg-white/96 px-4 py-3.5 shadow-[0_8px_16px_-24px_rgba(31,41,55,0.18)];
-  position: relative;
-  overflow: hidden;
+.conversation-status-loading-dot {
+  @apply h-1.5 w-1.5 rounded-full bg-[#0f766e];
+  box-shadow: 0 0 0 6px rgba(15, 118, 110, 0.08);
 }
 
-.conversation-loading-card-user {
-  @apply ml-auto bg-[#e9e3d7];
-}
-
-.conversation-loading-card::after {
-  display: none;
-}
-
-.conversation-loading-line {
-  @apply block h-3 rounded-full bg-[#efe7da];
-}
-
-.conversation-loading-line + .conversation-loading-line {
-  @apply mt-2;
-}
-
-.conversation-loading-line-wide {
-  width: 92%;
-}
-
-.conversation-loading-line-medium {
-  width: 72%;
-}
-
-.conversation-loading-line-short {
-  width: 48%;
+.conversation-status-loading-text {
+  @apply font-medium tracking-[0.01em];
 }
 
 .conversation-empty-state {
@@ -2765,33 +2767,19 @@ onBeforeUnmount(() => {
   @apply border-[#c7af5d] bg-[#f2e4b6];
 }
 
-.conversation-inline-loading {
-  @apply sticky top-0 z-10 mx-2 sm:mx-5 mb-1.5 mt-1.5 flex items-center gap-2 rounded-full border border-[#e5dbca] bg-[#fffdf8] px-3 py-1.5 text-xs text-[#7b7062];
-}
-
-.conversation-inline-loading-bar {
-  @apply block h-1.5 w-12 overflow-hidden rounded-full bg-[#e5ded2];
-  position: relative;
-}
-
-.conversation-inline-loading-bar::after {
-  content: '';
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 40%;
-  border-radius: 9999px;
-  background: linear-gradient(90deg, rgba(15, 118, 110, 0.15) 0%, rgba(15, 118, 110, 0.95) 100%);
-}
-
-.conversation-inline-loading-text {
-  @apply font-medium tracking-[0.01em];
-}
-
 .conversation-list {
   @apply h-full min-h-0 list-none m-0 px-2.5 sm:px-5 py-0 overflow-y-auto overflow-x-visible flex flex-col gap-1;
   padding-bottom: max(0.875rem, env(safe-area-inset-bottom));
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
+  transition: opacity 180ms ease, transform 220ms cubic-bezier(0.22, 1, 0.36, 1), filter 220ms ease;
+  will-change: opacity, transform;
+}
+
+.conversation-list--switching {
+  opacity: 0.74;
+  transform: translateY(4px);
+  filter: saturate(0.96);
 }
 
 .conversation-jump-to-latest {
@@ -2987,6 +2975,22 @@ onBeforeUnmount(() => {
 
 .live-overlay-detail-chip {
   @apply inline-flex items-center rounded-full border border-[#d6ebe6] bg-white/80 px-2 py-0.5 text-[11px] text-[#476760];
+}
+
+.live-overlay-command-panel {
+  @apply flex flex-col gap-0;
+}
+
+.live-overlay-command-row {
+  @apply cursor-default hover:bg-[#f8f4ec];
+}
+
+.live-overlay-command-output-wrap {
+  @apply rounded-b-lg bg-zinc-900 border border-[#d8cfbf] border-t-0;
+}
+
+.live-overlay-command-output {
+  @apply max-h-40;
 }
 
 .live-overlay-hint {
@@ -3338,7 +3342,7 @@ onBeforeUnmount(() => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .conversation-inline-loading-bar::after,
+  .conversation-loading-card::after,
   .message-action-button,
   .cmd-row,
   .cmd-chevron,
@@ -3346,6 +3350,17 @@ onBeforeUnmount(() => {
   .cmd-output-wrap {
     animation: none !important;
     transition: none !important;
+  }
+}
+
+@keyframes conversationFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 </style>

@@ -14,12 +14,19 @@
     <div
       v-if="isOpen"
       class="composer-dropdown-menu-wrap"
-      :class="{
-        'composer-dropdown-menu-wrap-up': openDirection === 'up',
-        'composer-dropdown-menu-wrap-down': openDirection === 'down',
-      }"
+      :class="isMobileViewport
+        ? 'composer-dropdown-menu-wrap-dialog'
+        : openDirection === 'up'
+          ? 'composer-dropdown-menu-wrap-up'
+          : 'composer-dropdown-menu-wrap-down'"
+      @click.self="closeMenu"
     >
-      <div class="composer-dropdown-menu">
+      <div ref="menuRef" class="composer-dropdown-menu" :style="mobileDialogStyle">
+        <div v-if="isMobileViewport" class="composer-dropdown-dialog-head">
+          <div class="composer-dropdown-dialog-handle" aria-hidden="true" />
+          <p class="composer-dropdown-dialog-title">{{ selectedLabel || placeholder?.trim() || '请选择' }}</p>
+        </div>
+
         <div v-if="enableSearch" class="composer-dropdown-search-wrap">
           <input
             ref="searchInputRef"
@@ -107,12 +114,17 @@ const emit = defineEmits<{
 }>()
 
 const rootRef = ref<HTMLElement | null>(null)
+const menuRef = ref<HTMLElement | null>(null)
 const searchInputRef = ref<HTMLInputElement | null>(null)
 const addInputRef = ref<HTMLInputElement | null>(null)
 const isOpen = ref(false)
 const searchQuery = ref('')
 const isAdding = ref(false)
 const addDraft = ref('')
+const viewportHeight = ref(typeof window !== 'undefined'
+  ? window.visualViewport?.height ?? window.innerHeight
+  : 0)
+const isMobileViewport = ref(typeof window !== 'undefined' ? window.innerWidth < 640 : false)
 
 const selectedLabel = computed(() => {
   const selected = props.options.find((option) => option.value === props.modelValue)
@@ -126,6 +138,11 @@ const showAddAction = computed(() => props.showAddAction === true)
 const searchPlaceholderText = computed(() => props.searchPlaceholder?.trim() || '快速搜索项目')
 const addActionLabelText = computed(() => props.addActionLabel?.trim() || '新增项目')
 const addPlaceholderText = computed(() => props.addPlaceholder?.trim() || '项目名或绝对路径')
+const mobileDialogStyle = computed(() => {
+  if (!isMobileViewport.value) return undefined
+  const maxHeight = Math.max(280, Math.floor(viewportHeight.value - 72))
+  return { maxHeight: `${maxHeight}px` }
+})
 const filteredOptions = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
   if (!query) return props.options
@@ -134,15 +151,34 @@ const filteredOptions = computed(() => {
   })
 })
 
+function updateViewportMetrics(): void {
+  if (typeof window === 'undefined') return
+  isMobileViewport.value = window.innerWidth < 640
+  viewportHeight.value = window.visualViewport?.height ?? window.innerHeight
+}
+
+function closeMenu(): void {
+  isOpen.value = false
+  searchQuery.value = ''
+  isAdding.value = false
+  addDraft.value = ''
+}
+
 function onToggle(): void {
   if (props.disabled) return
   isOpen.value = !isOpen.value
+  if (!isOpen.value) {
+    closeMenu()
+    return
+  }
+  searchQuery.value = ''
+  isAdding.value = false
+  addDraft.value = ''
 }
 
 function onSelect(value: string): void {
   emit('update:modelValue', value)
-  isOpen.value = false
-  searchQuery.value = ''
+  closeMenu()
 }
 
 function onStartAdd(): void {
@@ -156,56 +192,56 @@ function onEscapeSearch(): void {
     searchQuery.value = ''
     return
   }
-  isOpen.value = false
+  closeMenu()
 }
 
 function onConfirmAdd(): void {
   const value = addDraft.value.trim()
   if (!value) return
   emit('add', value)
-  isAdding.value = false
-  addDraft.value = ''
-  isOpen.value = false
-  searchQuery.value = ''
+  closeMenu()
 }
 
 function onCancelAdd(): void {
-  isAdding.value = false
-  addDraft.value = ''
-  isOpen.value = false
-  searchQuery.value = ''
+  closeMenu()
 }
 
 function onDocumentPointerDown(event: PointerEvent): void {
   if (!isOpen.value) return
   const root = rootRef.value
   if (!root) return
-
   const target = event.target
   if (!(target instanceof Node)) return
   if (root.contains(target)) return
-  isOpen.value = false
-  searchQuery.value = ''
-  isAdding.value = false
-  addDraft.value = ''
+  closeMenu()
 }
 
 watch(isOpen, (open) => {
-  if (!open) {
-    isAdding.value = false
-    addDraft.value = ''
-    return
-  }
-  if (!enableSearch.value) return
-  nextTick(() => searchInputRef.value?.focus())
+  if (!open) return
+  nextTick(() => {
+    if (isAdding.value) {
+      addInputRef.value?.focus()
+      return
+    }
+    if (enableSearch.value) {
+      searchInputRef.value?.focus()
+    }
+  })
 })
 
 onMounted(() => {
+  updateViewportMetrics()
   window.addEventListener('pointerdown', onDocumentPointerDown)
+  window.addEventListener('resize', updateViewportMetrics)
+  window.visualViewport?.addEventListener('resize', updateViewportMetrics)
+  window.visualViewport?.addEventListener('scroll', updateViewportMetrics)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('pointerdown', onDocumentPointerDown)
+  window.removeEventListener('resize', updateViewportMetrics)
+  window.visualViewport?.removeEventListener('resize', updateViewportMetrics)
+  window.visualViewport?.removeEventListener('scroll', updateViewportMetrics)
 })
 </script>
 
@@ -236,8 +272,9 @@ onBeforeUnmount(() => {
   @apply mt-px h-3.5 w-3.5 shrink-0 text-zinc-500;
 }
 
-.composer-dropdown-menu-wrap {
-  @apply absolute left-0 z-50;
+.composer-dropdown-menu-wrap-up,
+.composer-dropdown-menu-wrap-down {
+  @apply absolute left-0 z-[90];
 }
 
 .composer-dropdown-menu-wrap-down {
@@ -248,12 +285,33 @@ onBeforeUnmount(() => {
   @apply bottom-[calc(100%+8px)];
 }
 
+.composer-dropdown-menu-wrap-dialog {
+  @apply fixed inset-0 z-[120] flex items-center justify-center bg-black/24 p-4;
+}
+
 .composer-dropdown-menu {
-  @apply m-0 min-w-56 rounded-xl border border-zinc-200 bg-white p-1 shadow-lg;
+  @apply min-w-56 rounded-xl border border-zinc-200 bg-white p-1 shadow-lg overflow-hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.composer-dropdown-dialog-head {
+  @apply shrink-0 bg-white pt-2 pb-1;
+}
+
+.composer-dropdown-dialog-handle {
+  @apply mx-auto mb-2 h-1 w-10 rounded-full bg-[#d8d0c2];
+}
+
+.composer-dropdown-dialog-title {
+  @apply m-0 px-2 text-center text-sm font-semibold text-zinc-800;
 }
 
 .composer-dropdown-search-wrap {
-  @apply px-1 pb-1;
+  @apply shrink-0 px-1 pb-1 bg-white;
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 .composer-dropdown-search-input {
@@ -261,7 +319,8 @@ onBeforeUnmount(() => {
 }
 
 .composer-dropdown-options {
-  @apply m-0 max-h-56 list-none overflow-y-auto p-0;
+  @apply m-0 min-h-0 flex-1 list-none overflow-y-auto p-0;
+  overscroll-behavior: contain;
 }
 
 .composer-dropdown-option {
@@ -281,7 +340,7 @@ onBeforeUnmount(() => {
 }
 
 .composer-dropdown-add-wrap {
-  @apply mt-1 border-t border-zinc-200 pt-1;
+  @apply mt-1 border-t border-zinc-200 pt-1 shrink-0 bg-white;
 }
 
 .composer-dropdown-add-input {
@@ -294,5 +353,20 @@ onBeforeUnmount(() => {
 
 .composer-dropdown-add-btn {
   @apply rounded-md border border-zinc-200 bg-white px-2 py-0.5 text-xs text-zinc-700 transition hover:bg-zinc-100;
+}
+
+@media (max-width: 639px) {
+  .composer-dropdown-menu {
+    @apply w-full max-w-[28rem] rounded-[22px] shadow-[0_18px_40px_-24px_rgba(15,23,42,0.42)];
+  }
+
+  .composer-dropdown-option {
+    @apply px-3 py-3 text-[15px];
+  }
+
+  .composer-dropdown-search-input,
+  .composer-dropdown-add-input {
+    @apply py-2 text-[15px];
+  }
 }
 </style>
