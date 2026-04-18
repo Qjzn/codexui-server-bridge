@@ -2111,8 +2111,8 @@ async function submitFirstMessageForNewThread(
 .content-root {
   @apply h-full min-h-0 w-full flex flex-col overflow-y-hidden overflow-x-visible;
   background:
-    radial-gradient(circle at top right, rgba(13, 148, 136, 0.035), transparent 24%),
-    linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(250,247,240,0.98) 100%);
+    radial-gradient(circle at top right, rgba(13, 148, 136, 0.028), transparent 22%),
+    linear-gradient(180deg, rgba(255,255,255,0.94) 0%, rgba(250,247,240,0.97) 100%);
 }
 
 .sidebar-thread-controls-host {
@@ -2146,7 +2146,6 @@ async function submitFirstMessageForNewThread(
 
 .sidebar-search-bar {
   @apply sticky top-0 z-10 flex items-center gap-1.5 mx-2 px-3 py-2 rounded-2xl border border-[#e6dccb] bg-[#fffdf8] transition-colors;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.56);
 }
 
 .sidebar-search-bar-icon {
@@ -2259,7 +2258,7 @@ async function submitFirstMessageForNewThread(
 .composer-with-queue {
   @apply w-full sticky bottom-0 z-10 pt-2;
   background:
-    linear-gradient(180deg, rgba(250,247,240,0) 0%, rgba(250,247,240,0.9) 22%, rgba(250,247,240,0.98) 100%);
+    linear-gradient(180deg, rgba(250,247,240,0) 0%, rgba(250,247,240,0.82) 18%, rgba(250,247,240,0.95) 100%);
   padding-bottom: max(0.35rem, env(safe-area-inset-bottom));
 }
 
@@ -2494,7 +2493,7 @@ async function submitFirstMessageForNewThread(
   .composer-with-queue {
     @apply pt-1.5;
     background:
-      linear-gradient(180deg, rgba(250,247,240,0) 0%, rgba(250,247,240,0.94) 26%, rgba(250,247,240,1) 100%);
+      linear-gradient(180deg, rgba(250,247,240,0) 0%, rgba(250,247,240,0.88) 24%, rgba(250,247,240,0.98) 100%);
   }
 
   .new-thread-empty {

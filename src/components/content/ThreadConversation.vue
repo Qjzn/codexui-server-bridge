@@ -21,7 +21,23 @@
     </div>
 
     <template v-else>
-      <ul ref="conversationListRef" class="conversation-list" :class="{ 'conversation-list--switching': isThreadSwitchingState }" @scroll="onConversationScroll">
+      <ul ref="conversationListRef" class="conversation-list" :class="{ 'conversation-list--switching': isThreadSwitchingState }">
+      <li
+        v-if="hasHiddenEarlierMessages"
+        class="conversation-item conversation-item-load-more"
+      >
+        <button
+          type="button"
+          class="conversation-load-more-button"
+          :disabled="isRevealingOlderMessages"
+          @click="onRevealOlderMessages"
+        >
+          <span class="conversation-load-more-title">
+            {{ isRevealingOlderMessages ? '正在加载更早消息...' : `继续查看更多（剩余 ${hiddenEarlierMessageCount} 条）` }}
+          </span>
+          <span class="conversation-load-more-hint">滑到顶部也会继续加载</span>
+        </button>
+      </li>
       <li
         v-for="request in pendingRequests"
         :key="`server-request:${request.id}`"
@@ -701,9 +717,23 @@ const props = defineProps<{
   isThreadSwitching?: boolean
 }>()
 
+const MESSAGE_WINDOW_SIZE = 20
 const renderableMessages = computed<UiMessage[]>(() => (
   props.messages.filter((message) => !isRunningCommandMessage(message))
 ))
+const isRevealingOlderMessages = ref(false)
+const canAutoRevealOlderMessages = ref(true)
+const visibleMessageStartIndex = ref(0)
+
+function latestVisibleStartIndex(messageCount: number): number {
+  return Math.max(messageCount - MESSAGE_WINDOW_SIZE, 0)
+}
+
+const visibleRenderableMessages = computed<UiMessage[]>(() => (
+  renderableMessages.value.slice(visibleMessageStartIndex.value)
+))
+const hiddenEarlierMessageCount = computed(() => visibleMessageStartIndex.value)
+const hasHiddenEarlierMessages = computed(() => hiddenEarlierMessageCount.value > 0)
 
 const liveOverlayCommandMessage = computed<UiMessage | null>(() => {
   const overlay = props.liveOverlay
@@ -760,8 +790,8 @@ type ScrollAnchorSnapshot = {
   viewportOffset: number
 }
 
-const VIRTUALIZE_MIN_MESSAGES = 60
-const VIRTUAL_OVERSCAN_PX = 960
+const VIRTUALIZE_MIN_MESSAGES = 32
+const VIRTUAL_OVERSCAN_PX = 640
 const ESTIMATED_PENDING_REQUEST_HEIGHT_PX = 156
 
 let scrollRestoreFrame = 0
@@ -769,10 +799,14 @@ let scrollAnchorRestoreFrame = 0
 let bottomLockFrame = 0
 let bottomLockFramesLeft = 0
 let scrollStateEmitFrame = 0
+let scrollInteractionFrame = 0
 let pendingScrollStateContainer: HTMLElement | null = null
 let pendingScrollStateForce = false
+let pendingScrollInteractionContainer: HTMLElement | null = null
 let lastGapMeasuredContainer: HTMLElement | null = null
 let lastGapMeasuredViewportHeight = -1
+let observedConversationListElement: HTMLElement | null = null
+let lastScrollStateEmitAt = 0
 const trackedPendingImages = new WeakSet<HTMLImageElement>()
 const failedMarkdownImageKeys = ref<Set<string>>(new Set())
 const preparedMessageBlocksById = new Map<string, { text: string; blocks: PreparedMessageBlock[] }>()
@@ -856,7 +890,7 @@ const conversationListResizeObserver =
     })
     : null
 const hasRenderableConversation = computed(() => (
-  renderableMessages.value.length > 0 ||
+  visibleRenderableMessages.value.length > 0 ||
   props.pendingRequests.length > 0 ||
   props.liveOverlay !== null
 ))
@@ -896,7 +930,7 @@ const pendingRequestsHeight = computed(() => (
     total + (measuredPendingRequestHeightById.value[String(request.id)] ?? ESTIMATED_PENDING_REQUEST_HEIGHT_PX)
   ), 0) +
   conversationItemGap.value *
-    (props.pendingRequests.length > 0 && renderableMessages.value.length > 0
+    (props.pendingRequests.length > 0 && visibleRenderableMessages.value.length > 0
       ? props.pendingRequests.length
       : Math.max(props.pendingRequests.length - 1, 0))
 ))
@@ -922,25 +956,33 @@ const workedCommandsByMessageId = computed<Record<string, UiMessage[]>>(() => {
 
   return next
 })
-const shouldVirtualizeMessages = computed(() => renderableMessages.value.length >= VIRTUALIZE_MIN_MESSAGES)
-const virtualizedMessageMetrics = computed(() => {
+const shouldVirtualizeMessages = computed(() => visibleRenderableMessages.value.length >= VIRTUALIZE_MIN_MESSAGES)
+const messageHeightMetrics = computed(() => {
   const cumulativeHeights: number[] = [0]
-  for (const message of renderableMessages.value) {
+  for (const message of visibleRenderableMessages.value) {
     const height = measuredMessageHeightById.value[message.id] ?? estimateMessageHeight(message)
     cumulativeHeights.push(cumulativeHeights[cumulativeHeights.length - 1] + height + conversationItemGap.value)
   }
 
-  const totalHeight = renderableMessages.value.length > 0
+  const totalHeight = visibleRenderableMessages.value.length > 0
     ? Math.max((cumulativeHeights[cumulativeHeights.length - 1] ?? 0) - conversationItemGap.value, 0)
     : 0
-  if (!shouldVirtualizeMessages.value || renderableMessages.value.length === 0) {
+
+  return {
+    cumulativeHeights,
+    totalHeight,
+  }
+})
+
+const virtualizedMessageRange = computed(() => {
+  if (!shouldVirtualizeMessages.value || visibleRenderableMessages.value.length === 0) {
     return {
       startIndex: 0,
-      endIndex: renderableMessages.value.length,
-      cumulativeHeights,
-      totalHeight,
+      endIndex: visibleRenderableMessages.value.length,
     }
   }
+
+  const { cumulativeHeights } = messageHeightMetrics.value
 
   const relativeScrollTop = Math.max(conversationScrollTop.value - pendingRequestsHeight.value, 0)
   const viewportHeight = Math.max(conversationViewportHeight.value, 1)
@@ -949,7 +991,7 @@ const virtualizedMessageMetrics = computed(() => {
 
   let startIndex = 0
   while (
-    startIndex < renderableMessages.value.length &&
+    startIndex < visibleRenderableMessages.value.length &&
     cumulativeHeights[startIndex + 1] < visibleStart
   ) {
     startIndex += 1
@@ -957,28 +999,30 @@ const virtualizedMessageMetrics = computed(() => {
 
   let endIndex = startIndex
   while (
-    endIndex < renderableMessages.value.length &&
+    endIndex < visibleRenderableMessages.value.length &&
     cumulativeHeights[endIndex] < visibleEnd
   ) {
     endIndex += 1
   }
 
-  endIndex = Math.min(renderableMessages.value.length, Math.max(endIndex + 1, startIndex + 1))
+  endIndex = Math.min(visibleRenderableMessages.value.length, Math.max(endIndex + 1, startIndex + 1))
 
   return {
     startIndex,
     endIndex,
-    cumulativeHeights,
-    totalHeight,
   }
 })
+const virtualizedMessageMetrics = computed(() => ({
+  ...messageHeightMetrics.value,
+  ...virtualizedMessageRange.value,
+}))
 const virtualizedMessages = computed<VirtualizedMessageEntry[]>(() => {
   const { startIndex, endIndex } = virtualizedMessageMetrics.value
-  return renderableMessages.value
+  return visibleRenderableMessages.value
     .slice(startIndex, endIndex)
     .map((message, index) => ({
       message,
-      messageIndex: startIndex + index,
+      messageIndex: visibleMessageStartIndex.value + startIndex + index,
     }))
 })
 const virtualTopSpacerHeight = computed(() => {
@@ -1201,6 +1245,21 @@ async function scheduleScrollAnchorRestore(snapshot: ScrollAnchorSnapshot | null
       resolve(restoreScrollAnchor(snapshot))
     })
   })
+}
+
+async function revealOlderMessages(): Promise<void> {
+  if (!hasHiddenEarlierMessages.value || isRevealingOlderMessages.value) return
+  const anchorSnapshot = captureVisibleConversationAnchor()
+  isRevealingOlderMessages.value = true
+  canAutoRevealOlderMessages.value = false
+  visibleMessageStartIndex.value = Math.max(visibleMessageStartIndex.value - MESSAGE_WINDOW_SIZE, 0)
+  await nextTick()
+  await scheduleScrollAnchorRestore(anchorSnapshot)
+  isRevealingOlderMessages.value = false
+}
+
+function onRevealOlderMessages(): void {
+  void revealOlderMessages()
 }
 
 function estimateTextHeight(text: string, pixelsPerLine = 22, charsPerLine = 54): number {
@@ -2363,26 +2422,37 @@ function flushScrollState(): void {
   emitScrollState(container, force)
 }
 
-function emitScrollState(container: HTMLElement, force = false): void {
+function emitScrollState(container: HTMLElement, force = false, viewportSynced = false): void {
   if (!props.activeThreadId) return
-  syncConversationViewport(container)
+  if (!viewportSynced) {
+    syncConversationViewport(container)
+  }
   const maxScrollTop = Math.max(container.scrollHeight - container.clientHeight, 0)
   const scrollRatio = maxScrollTop > 0 ? Math.min(Math.max(container.scrollTop / maxScrollTop, 0), 1) : 1
+  const atBottom = isAtBottom(container)
   const nextSignature = [
     props.activeThreadId,
     String(Math.round(container.scrollTop / 24)),
-    isAtBottom(container) ? '1' : '0',
+    atBottom ? '1' : '0',
     String(Math.round(scrollRatio * 100)),
   ].join(':')
+  const now =
+    typeof performance !== 'undefined' && typeof performance.now === 'function'
+      ? performance.now()
+      : Date.now()
+  if (!force && !atBottom && now - lastScrollStateEmitAt < 120) {
+    return
+  }
   if (!force && nextSignature === lastEmittedScrollStateSignature.value) {
     return
   }
+  lastScrollStateEmitAt = now
   lastEmittedScrollStateSignature.value = nextSignature
   emit('updateScrollState', {
     threadId: props.activeThreadId,
     state: {
       scrollTop: container.scrollTop,
-      isAtBottom: isAtBottom(container),
+      isAtBottom: atBottom,
       scrollRatio,
     },
   })
@@ -2399,6 +2469,31 @@ function scheduleEmitScrollState(container: HTMLElement, force = false): void {
   scrollStateEmitFrame = requestAnimationFrame(flushScrollState)
 }
 
+function flushConversationScrollInteraction(): void {
+  scrollInteractionFrame = 0
+  const container = pendingScrollInteractionContainer
+  pendingScrollInteractionContainer = null
+  if (!container || props.isLoading) return
+  syncConversationViewport(container)
+  if (container.scrollTop > 160) {
+    canAutoRevealOlderMessages.value = true
+  }
+  if (
+    container.scrollTop <= 96 &&
+    hasHiddenEarlierMessages.value &&
+    canAutoRevealOlderMessages.value &&
+    !isRevealingOlderMessages.value
+  ) {
+    void revealOlderMessages()
+  }
+  const atBottom = isAtBottom(container)
+  autoFollowBottom.value = atBottom
+  emitScrollState(container, false, true)
+  if (atBottom) {
+    clearBelowFoldUpdates()
+  }
+}
+
 function markBelowFoldUpdate(): void {
   if (shouldLockToBottom()) return
   hasPendingBelowFoldUpdates.value = true
@@ -2407,6 +2502,30 @@ function markBelowFoldUpdate(): void {
 function clearBelowFoldUpdates(): void {
   hasPendingBelowFoldUpdates.value = false
 }
+
+watch(
+  () => renderableMessages.value.length,
+  (nextLength, previousLength) => {
+    const nextLatestStartIndex = latestVisibleStartIndex(nextLength)
+    if (previousLength == null) {
+      visibleMessageStartIndex.value = nextLatestStartIndex
+      return
+    }
+
+    if (nextLength === 0) {
+      visibleMessageStartIndex.value = 0
+      return
+    }
+
+    if (previousLength === 0) {
+      visibleMessageStartIndex.value = nextLatestStartIndex
+      return
+    }
+
+    visibleMessageStartIndex.value = Math.min(visibleMessageStartIndex.value, nextLatestStartIndex)
+  },
+  { immediate: true },
+)
 
 function applySavedScrollState(): void {
   const container = conversationListRef.value
@@ -2595,7 +2714,11 @@ watch(
     conversationScrollTop.value = 0
     lastGapMeasuredContainer = null
     lastGapMeasuredViewportHeight = -1
+    lastScrollStateEmitAt = 0
     lastEmittedScrollStateSignature.value = ''
+    isRevealingOlderMessages.value = false
+    canAutoRevealOlderMessages.value = true
+    visibleMessageStartIndex.value = latestVisibleStartIndex(renderableMessages.value.length)
     clearBelowFoldUpdates()
     autoFollowBottom.value = props.scrollState?.isAtBottom !== false
   },
@@ -2626,24 +2749,29 @@ watch(
   conversationListRef,
   (nextElement, previousElement) => {
     if (previousElement) {
+      previousElement.removeEventListener('scroll', onConversationScroll, { passive: true } as AddEventListenerOptions)
+      observedConversationListElement = null
+    }
+    if (previousElement) {
       conversationListResizeObserver?.unobserve(previousElement)
     }
     if (!nextElement) return
+    nextElement.addEventListener('scroll', onConversationScroll, { passive: true })
+    observedConversationListElement = nextElement
     syncConversationViewport(nextElement)
     conversationListResizeObserver?.observe(nextElement)
   },
   { flush: 'post' },
 )
 
-function onConversationScroll(): void {
-  const container = conversationListRef.value
+function onConversationScroll(event: Event): void {
+  const container = event.currentTarget instanceof HTMLElement
+    ? event.currentTarget
+    : conversationListRef.value
   if (!container || props.isLoading) return
-  syncConversationViewport(container)
-  autoFollowBottom.value = isAtBottom(container)
-  scheduleEmitScrollState(container)
-  if (isAtBottom(container)) {
-    clearBelowFoldUpdates()
-  }
+  pendingScrollInteractionContainer = container
+  if (scrollInteractionFrame) return
+  scrollInteractionFrame = requestAnimationFrame(flushConversationScrollInteraction)
 }
 
 function jumpToLatest(): void {
@@ -2703,6 +2831,13 @@ onBeforeUnmount(() => {
   if (scrollStateEmitFrame) {
     cancelAnimationFrame(scrollStateEmitFrame)
   }
+  if (scrollInteractionFrame) {
+    cancelAnimationFrame(scrollInteractionFrame)
+  }
+  if (observedConversationListElement) {
+    observedConversationListElement.removeEventListener('scroll', onConversationScroll, { passive: true } as AddEventListenerOptions)
+    observedConversationListElement = null
+  }
   conversationListResizeObserver?.disconnect()
   itemResizeObserver?.disconnect()
   disconnectAllObservedElements(observedMessageElementsById)
@@ -2725,14 +2860,12 @@ onBeforeUnmount(() => {
 }
 
 .conversation-status-loading {
-  @apply sticky top-0 z-10 mx-2 sm:mx-5 mb-1.5 mt-1.5 flex items-center gap-2 rounded-full border border-[#e5dbca] bg-[#fffdf8]/92 px-3 py-1.5 text-xs text-[#7b7062];
-  backdrop-filter: blur(10px);
+  @apply sticky top-0 z-10 mx-2 sm:mx-5 mb-1.5 mt-1.5 flex items-center gap-2 rounded-full border border-[#e5dbca] bg-[#fffdf8] px-3 py-1.5 text-xs text-[#7b7062];
   animation: conversationFadeIn 160ms ease-out;
 }
 
 .conversation-status-loading-dot {
   @apply h-1.5 w-1.5 rounded-full bg-[#0f766e];
-  box-shadow: 0 0 0 6px rgba(15, 118, 110, 0.08);
 }
 
 .conversation-status-loading-text {
@@ -2772,18 +2905,16 @@ onBeforeUnmount(() => {
   padding-bottom: max(0.875rem, env(safe-area-inset-bottom));
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
-  transition: opacity 180ms ease, transform 220ms cubic-bezier(0.22, 1, 0.36, 1), filter 220ms ease;
-  will-change: opacity, transform;
+  transition: opacity 140ms ease, transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .conversation-list--switching {
-  opacity: 0.74;
-  transform: translateY(4px);
-  filter: saturate(0.96);
+  opacity: 0.82;
+  transform: translateY(2px);
 }
 
 .conversation-jump-to-latest {
-  @apply absolute bottom-4 right-4 z-20 inline-flex items-center gap-2 rounded-full border border-[#ddd3c2] bg-[#fffdf8] px-3 py-2 text-xs font-semibold text-[#544a3d] shadow-md shadow-[#1f2937]/5 hover:border-[#bca98d] hover:text-[#1f2937];
+  @apply absolute bottom-4 right-4 z-20 inline-flex items-center gap-2 rounded-full border border-[#ddd3c2] bg-[#fffdf8] px-3 py-2 text-xs font-semibold text-[#544a3d] hover:border-[#bca98d] hover:text-[#1f2937];
   bottom: max(1rem, calc(env(safe-area-inset-bottom) + 0.5rem));
 }
 
@@ -2801,7 +2932,7 @@ onBeforeUnmount(() => {
 }
 
 .conversation-jump-to-latest-badge {
-  @apply h-2.5 w-2.5 rounded-full bg-blue-500 shadow-[0_0_0_4px_rgba(59,130,246,0.16)];
+  @apply h-2.5 w-2.5 rounded-full bg-blue-500;
 }
 
 .conversation-item {
@@ -2820,6 +2951,22 @@ onBeforeUnmount(() => {
 
 .conversation-item-request {
   @apply justify-center;
+}
+
+.conversation-item-load-more {
+  @apply justify-center;
+}
+
+.conversation-load-more-button {
+  @apply mx-auto flex w-full max-w-180 flex-col items-center gap-0.5 rounded-2xl border border-dashed border-[#ddd3c2] bg-[#fffdf8] px-3 py-2 text-center transition-colors hover:border-[#cbb89b] hover:bg-[#fffaf0] disabled:cursor-default disabled:opacity-70;
+}
+
+.conversation-load-more-title {
+  @apply text-xs font-semibold text-[#544a3d];
+}
+
+.conversation-load-more-hint {
+  @apply text-[11px] text-[#8f8577];
 }
 
 .conversation-item-overlay {
@@ -2849,7 +2996,7 @@ onBeforeUnmount(() => {
 }
 
 .request-card {
-  @apply w-full max-w-180 rounded-[20px] border border-[#ead9b5] bg-[#fff9ee] px-3 sm:px-3.5 py-2.5 sm:py-3 flex flex-col gap-1.5 shadow-[0_8px_18px_-24px_rgba(194,65,12,0.18)];
+  @apply w-full max-w-180 rounded-[20px] border border-[#ead9b5] bg-[#fff9ee] px-3 sm:px-3.5 py-2.5 sm:py-3 flex flex-col gap-1.5;
 }
 
 .request-title {
@@ -2901,11 +3048,11 @@ onBeforeUnmount(() => {
 }
 
 .live-overlay-inline {
-  @apply w-full max-w-180 rounded-[20px] border border-[#cfe6e0] bg-[#f6fbfa] px-3.5 py-2.5 flex flex-col gap-1.5 shadow-[0_8px_18px_-26px_rgba(15,118,110,0.18)];
+  @apply w-full max-w-180 rounded-[20px] border border-[#cfe6e0] bg-[#f6fbfa] px-3.5 py-2.5 flex flex-col gap-1.5;
 }
 
 .live-overlay-inline-compact {
-  @apply max-w-132 rounded-[18px] px-3 py-2 shadow-[0_6px_14px_-22px_rgba(15,118,110,0.22)];
+  @apply max-w-132 rounded-[18px] px-3 py-2;
 }
 
 .live-overlay-head {
@@ -3151,14 +3298,14 @@ onBeforeUnmount(() => {
 }
 
 .message-card[data-role='user'] {
-  @apply rounded-[20px] border border-[#ddd3c2] bg-[#efe8dc] px-3 sm:px-3.5 py-2 sm:py-2.5 max-w-[min(560px,100%)] shadow-[0_8px_18px_-24px_rgba(31,41,55,0.22)];
+  @apply rounded-[20px] border border-[#ddd3c2] bg-[#efe8dc] px-3 sm:px-3.5 py-2 sm:py-2.5 max-w-[min(560px,100%)];
   width: fit-content;
   margin-left: auto;
   align-self: flex-end;
 }
 
 .message-card[data-role='assistant'] {
-  @apply rounded-[22px] border border-[#ece5d8] bg-white/96 px-3.5 py-2.5 shadow-[0_8px_18px_-24px_rgba(31,41,55,0.14)];
+  @apply rounded-[22px] border border-[#ece5d8] bg-white px-3.5 py-2.5;
 }
 
 .message-card[data-role='system'] {
@@ -3245,7 +3392,6 @@ onBeforeUnmount(() => {
 .message-action-button {
   @apply opacity-0 inline-flex items-center gap-1 self-start rounded-full border border-[#ddd5c7] bg-[#fffdf8] px-2.5 py-1 text-xs text-[#7b7062] transition-[background-color,border-color,color,opacity] duration-150 hover:bg-[#f3ede2] hover:text-[#544a3d] hover:border-[#cdbfa9];
   pointer-events: auto;
-  box-shadow: 0 8px 18px -18px rgba(31, 41, 55, 0.24);
 }
 
 .message-stack[data-role='user'] .message-actions {

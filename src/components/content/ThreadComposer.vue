@@ -1219,7 +1219,7 @@ watch(
 }
 
 .thread-composer-shell {
-  @apply relative rounded-[24px] border border-[#ddd5c7] bg-[#fffdf8] p-2.5 sm:p-3 shadow-[0_10px_24px_-28px_rgba(31,41,55,0.18)];
+  @apply relative rounded-[24px] border border-[#ddd5c7] bg-[#fffdf8] p-2.5 sm:p-3;
 }
 
 .thread-composer-shell--no-top-radius {
@@ -1307,7 +1307,7 @@ watch(
 }
 
 .thread-composer-file-mentions {
-  @apply absolute left-0 right-0 bottom-[calc(100%+8px)] z-40 max-h-52 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-1 shadow-lg;
+  @apply absolute left-0 right-0 bottom-[calc(100%+8px)] z-40 max-h-52 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-1;
 }
 
 .thread-composer-file-mention-row {
@@ -1387,7 +1387,7 @@ watch(
 }
 
 .thread-composer-attach-menu {
-  @apply absolute bottom-11 left-0 z-20 w-72 max-w-[calc(100vw-1rem)] rounded-xl border border-zinc-200 bg-white p-1 shadow-lg;
+  @apply absolute bottom-11 left-0 z-20 w-72 max-w-[calc(100vw-1rem)] rounded-xl border border-zinc-200 bg-white p-1;
 }
 
 .thread-composer-attach-item {

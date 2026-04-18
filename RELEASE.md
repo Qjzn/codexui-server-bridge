@@ -2,8 +2,9 @@
 
 本仓库使用 GitHub Release 作为主发版方式，版本命名采用：
 
-- `v0.1.59-bridge.1`
-- `v0.1.59-bridge.2`
+- `v0.2.0-bridge.1`
+- `v0.2.0-bridge.2`
+- `v0.2.1-bridge.1`
 
 这样可以和 upstream / npm 基础版本区分开，同时保持桥接版自己的节奏。
 
@@ -15,7 +16,7 @@
    ```powershell
    npm ci
    npm run build
-   powershell -ExecutionPolicy Bypass -File .\scripts\package-release.ps1 -Version v0.1.59-bridge.1
+   powershell -ExecutionPolicy Bypass -File .\scripts\package-release.ps1 -Version v0.2.0-bridge.1
    ```
 
 3. 检查 `artifacts/` 中是否生成：
@@ -33,8 +34,8 @@
 
 ```powershell
 git push publish main
-git tag v0.1.59-bridge.1
-git push publish v0.1.59-bridge.1
+git tag v0.2.0-bridge.1
+git push publish v0.2.0-bridge.1
 ```
 
 Release 工作流会自动完成：

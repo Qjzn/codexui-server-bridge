@@ -94,7 +94,7 @@ function getMessageMeta(message: QueuedMessageRow): string {
 }
 
 .queued-messages-inner {
-  @apply flex max-h-[34dvh] flex-col gap-1 overflow-y-auto rounded-[22px] border border-[#ddd5c7] bg-[#fffdf8] px-3 py-2.5 shadow-[0_8px_18px_-24px_rgba(31,41,55,0.16)];
+  @apply flex max-h-[34dvh] flex-col gap-1 overflow-y-auto rounded-[22px] border border-[#ddd5c7] bg-[#fffdf8] px-3 py-2.5;
 }
 
 .queued-messages-header {

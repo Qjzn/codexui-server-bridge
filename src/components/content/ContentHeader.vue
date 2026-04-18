@@ -33,8 +33,7 @@ const hasMeta = computed(() => Boolean(slots.meta))
 @reference "tailwindcss";
 
 .content-header {
-  @apply sticky top-0 z-20 w-full flex flex-col gap-1 px-3 sm:px-4 pt-2 sm:pt-2 pb-2 border-b border-[#e8dfcf] bg-[#fcfbf8]/94 backdrop-blur-md;
-  box-shadow: 0 10px 22px -28px rgba(31, 41, 55, 0.22);
+  @apply sticky top-0 z-20 w-full flex flex-col gap-1 px-3 sm:px-4 pt-2 sm:pt-2 pb-2 border-b border-[#e8dfcf] bg-[#fcfbf8]/96;
 }
 
 .content-header-main {

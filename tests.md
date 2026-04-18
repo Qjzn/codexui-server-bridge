@@ -421,3 +421,28 @@ This file tracks manual regression and feature verification steps.
 
 #### Rollback/Cleanup
 - 无需额外清理；若需回退，恢复本轮前端构建前的 `ThreadComposer.vue`、`ThreadConversation.vue` 与 `App.vue` 版本。
+
+---
+
+### Feature: 会话滚动流畅度与全局壳层减重
+
+#### Prerequisites
+- `7420` 服务运行中，前端资源已更新到本轮构建版本。
+- 准备一个长会话，至少包含 40 条以上消息，最好带命令卡片与图片消息。
+- 同时准备桌面端和手机端各做一轮滚动体验验证。
+
+#### Steps
+1. 打开长会话，连续上下快速滚动消息列表。
+2. 观察滚动过程中是否出现明显掉帧、白块、延迟跟手或 hover 控件抖动。
+3. 在会话中切换到另一条有历史消息的线程，观察切换时顶部加载提示和内容过渡。
+4. 打开侧栏，再关闭侧栏，检查遮罩、抽屉和主内容切换是否仍然平滑。
+5. 在消息列表底部观察“回到底部”按钮、消息卡片、队列区、标题栏和输入区的视觉层级是否更轻。
+
+#### Expected Results
+- 长会话滚动时，页面跟手更稳定，不应再出现明显连续掉帧。
+- 会话切换仅保留低感知过渡，不出现滤镜感或重阴影拖影。
+- 标题栏、消息卡片、队列区和输入区整体更平、更轻，视觉层级更统一。
+- 侧栏抽屉与主内容的切换应顺滑，不应因遮罩或重模糊造成明显性能负担。
+
+#### Rollback/Cleanup
+- 若需回退，恢复本轮前的 `ThreadConversation.vue`、`DesktopLayout.vue`、`ContentHeader.vue`、`ThreadComposer.vue`、`QueuedMessages.vue` 与 `App.vue` 版本。
