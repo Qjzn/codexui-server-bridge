@@ -18,6 +18,7 @@ param(
   [switch]$SkipBuild,
   [switch]$EnsureCodexLogin,
   [switch]$CreateStartupTask,
+  [switch]$InstallCloudflared,
   [string]$TaskName = "",
   [switch]$StartNow
 )
@@ -279,6 +280,98 @@ function Wait-ForHealthEndpoint {
   return $null
 }
 
+function Resolve-CloudflaredCommand {
+  try {
+    $command = Get-Command cloudflared -ErrorAction Stop
+    $version = & $command.Source --version 2>$null
+    if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($version)) {
+      return $command.Source
+    }
+  } catch {}
+
+  $localCandidate = Join-Path $env:USERPROFILE ".local\bin\cloudflared.exe"
+  if (Test-Path -LiteralPath $localCandidate) {
+    $version = & $localCandidate --version 2>$null
+    if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($version)) {
+      return $localCandidate
+    }
+  }
+
+  return $null
+}
+
+function Install-CloudflaredWindows {
+  $existing = Resolve-CloudflaredCommand
+  if ($existing) {
+    Write-Host "cloudflared already available: $existing"
+    return $existing
+  }
+
+  $archAsset = if ([Environment]::Is64BitOperatingSystem) { "cloudflared-windows-amd64.exe" } else { "cloudflared-windows-386.exe" }
+  $downloadUrl = "https://github.com/cloudflare/cloudflared/releases/latest/download/$archAsset"
+  $targetDir = Join-Path $env:USERPROFILE ".local\bin"
+  $targetPath = Join-Path $targetDir "cloudflared.exe"
+
+  New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+  Write-Host "Downloading cloudflared: $downloadUrl"
+  Invoke-WebRequest -Uri $downloadUrl -OutFile $targetPath
+
+  $version = & $targetPath --version 2>$null
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($version)) {
+    throw "cloudflared download completed but verification failed: $targetPath"
+  }
+
+  Write-Host "cloudflared installed: $targetPath"
+  return $targetPath
+}
+
+function Ensure-CloudflaredForTunnel {
+  if (-not $Tunnel) {
+    if ($InstallCloudflared) {
+      Install-CloudflaredWindows | Out-Null
+    }
+    return
+  }
+
+  $existing = Resolve-CloudflaredCommand
+  if ($existing) {
+    Write-Host "cloudflared available: $existing"
+    return
+  }
+
+  if ($InstallCloudflared) {
+    Install-CloudflaredWindows | Out-Null
+    return
+  }
+
+  Write-Warning "Tunnel is enabled but cloudflared was not found. Re-run with -InstallCloudflared, or install Cloudflare.cloudflared manually."
+}
+
+function Wait-ForTunnelUrlFromLog {
+  param(
+    [string]$LogPath,
+    [int]$TimeoutSeconds = 45
+  )
+
+  if ([string]::IsNullOrWhiteSpace($LogPath)) {
+    return $null
+  }
+
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  $pattern = "https://[^\s]+\.trycloudflare\.com"
+  do {
+    if (Test-Path -LiteralPath $LogPath) {
+      $content = Get-Content -LiteralPath $LogPath -Raw -ErrorAction SilentlyContinue
+      if ($content -match $pattern) {
+        return $Matches[0]
+      }
+    }
+    Start-Sleep -Seconds 2
+  } while ((Get-Date) -lt $deadline)
+
+  return $null
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $nodeCommand = Get-Command node -ErrorAction Stop
 $npmCommandInfo = Get-Command npm -ErrorAction Stop
@@ -329,6 +422,11 @@ if ($NoPassword) {
 
 if ($EnsureCodexLogin) {
   Ensure-CodexLogin -NodePath $nodeCommand.Source -RepoRoot $repoRoot
+}
+
+if ($Tunnel -or $InstallCloudflared) {
+  Write-Step "Preparing cloudflared"
+  Ensure-CloudflaredForTunnel
 }
 
 $configDir = Split-Path -Parent $ConfigPath
@@ -400,7 +498,9 @@ if ($StartNow) {
 }
 
 $logDir = "$env:USERPROFILE\.codexui\logs"
+$outLogPath = Join-Path $logDir "codexui.out.log"
 $accessUrls = Get-AccessibleUrls -BindHostValue $BindHost -TargetPort $Port
+$tunnelUrl = if ($Tunnel -and $StartNow) { Wait-ForTunnelUrlFromLog -LogPath $outLogPath } else { $null }
 
 Write-Host ""
 Write-Host "Install complete."
@@ -415,6 +515,13 @@ foreach ($url in $accessUrls) {
 }
 Write-Host "Health:   http://127.0.0.1:$Port/health"
 Write-Host "Bridge:   http://127.0.0.1:$Port/codex-api/health"
+if ($Tunnel) {
+  if ($tunnelUrl) {
+    Write-Host "Tunnel:   $tunnelUrl"
+  } else {
+    Write-Host "Tunnel:   enabled; check $outLogPath for the trycloudflare.com URL"
+  }
+}
 if ($passwordValue -is [string]) {
   Write-Host "Password: $passwordValue"
 } elseif ($passwordValue -eq $false) {

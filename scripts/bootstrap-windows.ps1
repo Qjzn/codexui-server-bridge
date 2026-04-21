@@ -12,6 +12,8 @@ param(
   [switch]$SkipStartupTask,
   [switch]$SkipFirewall,
   [switch]$SkipLogin,
+  [switch]$EnableCloudflareTunnel,
+  [switch]$SkipCloudflaredInstall,
   [switch]$NoStart,
   [string]$SourceRepoRoot = ""
 )
@@ -164,6 +166,12 @@ if (-not $SkipStartupTask) {
 if (-not $SkipLogin) {
   $invokeArgs += "-EnsureCodexLogin"
 }
+if ($EnableCloudflareTunnel) {
+  $invokeArgs += "-Tunnel"
+  if (-not $SkipCloudflaredInstall) {
+    $invokeArgs += "-InstallCloudflared"
+  }
+}
 if (-not $NoStart) {
   $invokeArgs += "-StartNow"
 }
@@ -179,3 +187,6 @@ Write-Host "Bootstrap complete." -ForegroundColor Green
 Write-Host "Install dir: $repoRoot"
 Write-Host "Launcher:    $env:USERPROFILE\.local\bin\codexui-start.cmd"
 Write-Host "Logs:        $env:USERPROFILE\.codexui\logs"
+if ($EnableCloudflareTunnel) {
+  Write-Host "Tunnel:      enabled; open the trycloudflare.com URL printed above or in codexui.out.log"
+}

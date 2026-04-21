@@ -75,6 +75,18 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; irm https://raw.githubusercont
 
 安装完成后，直接在浏览器或手机里打开输出的地址即可。
 
+## Windows 一条命令开启公网临时访问
+
+如果没有公网 IP、不想配置路由器端口映射，可以使用 Cloudflare 快速隧道：
+
+```powershell
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/Qjzn/codexui-server-bridge/main/scripts/bootstrap-windows.ps1'))) -EnableCloudflareTunnel
+```
+
+脚本会自动下载 `cloudflared.exe`，启动后在日志里输出 `https://*.trycloudflare.com` 地址。长期固定域名请看：
+
+- [Cloudflare Tunnel 远程访问](./docs/cloudflare-tunnel.zh-CN.md)
+
 ## 手动运行
 
 ### 本地快速启动

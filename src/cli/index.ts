@@ -75,9 +75,14 @@ function resolveCloudflaredCommand(): string | null {
   if (canRunCommand('cloudflared', ['--version'])) {
     return 'cloudflared'
   }
-  const localCandidate = join(homedir(), '.local', 'bin', 'cloudflared')
-  if (existsSync(localCandidate) && canRunCommand(localCandidate, ['--version'])) {
-    return localCandidate
+  const localCandidates = [
+    join(homedir(), '.local', 'bin', 'cloudflared'),
+    join(homedir(), '.local', 'bin', 'cloudflared.exe'),
+  ]
+  for (const localCandidate of localCandidates) {
+    if (existsSync(localCandidate) && canRunCommand(localCandidate, ['--version'])) {
+      return localCandidate
+    }
   }
   return null
 }

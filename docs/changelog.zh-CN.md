@@ -14,6 +14,10 @@
   - `docs/roadmap.zh-CN.md`
   - `docs/cloudflare-tunnel.zh-CN.md`
 - README 增加路线图、Cloudflare Tunnel、贡献指南和安全策略入口
+- Windows bootstrap 增加 `-EnableCloudflareTunnel`
+- Windows install 脚本增加 `-InstallCloudflared`，可自动下载 `cloudflared.exe`
+- CLI 增加 Windows 用户目录下 `cloudflared.exe` 的自动识别
+- Cloudflare Tunnel 文档改为优先说明无需账号域名的快速隧道模式
 
 ## v0.2.0-bridge.3
 

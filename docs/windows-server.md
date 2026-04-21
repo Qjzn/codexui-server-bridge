@@ -30,6 +30,15 @@ If you want custom options such as a fixed password:
   -Password 'change-me'
 ```
 
+If you want a temporary HTTPS address without router port mapping:
+
+```powershell
+& ([scriptblock]::Create((irm 'https://raw.githubusercontent.com/Qjzn/codexui-server-bridge/main/scripts/bootstrap-windows.ps1'))) `
+  -EnableCloudflareTunnel
+```
+
+This downloads `cloudflared.exe` to the user profile, enables `tunnel: true`, and prints the `trycloudflare.com` URL in `%USERPROFILE%\.codexui\logs\codexui.out.log`.
+
 If you prefer a downloadable bundle, grab the latest zip from [GitHub Releases](https://github.com/Qjzn/codexui-server-bridge/releases), extract it anywhere, and run:
 
 ```powershell
@@ -48,13 +57,15 @@ npm run build
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\install-windows-server.ps1 `
-  -ProjectPath "C:\Users\SW\Documents\Playground" `
+  -ProjectPath "$env:USERPROFILE\CodexWorkspace" `
   -CreateProjectPath `
   -Port 7420 `
   -Password "change-me" `
   -CreateStartupTask `
   -EnsureCodexLogin `
   -OpenFirewall `
+  -InstallCloudflared `
+  -Tunnel `
   -StartNow
 ```
 
