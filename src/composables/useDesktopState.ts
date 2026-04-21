@@ -1056,8 +1056,52 @@ export function useDesktopState() {
       case 'item/tool/call':
         return '等待处理'
       default:
-        return '等待处理'
+        return isMcpElicitationRequestMethod(method) ? '等待输入' : '等待处理'
     }
+  }
+
+  function isMcpElicitationRequestMethod(method: string): boolean {
+    const normalized = method.trim().toLowerCase()
+    return (
+      normalized === 'mcpserver/elicitation/request' ||
+      normalized === 'mcpserver/elication/request' ||
+      normalized === 'elicitation/create'
+    )
+  }
+
+  function looksLikeMcpElicitationPayload(payload: Record<string, unknown> | null): boolean {
+    if (!payload) return false
+    return (
+      readString(payload.message).trim().length > 0 ||
+      readString(payload.mode).trim().length > 0 ||
+      readString(payload.url).trim().length > 0 ||
+      asRecord(payload.requestedSchema) !== null ||
+      asRecord(payload.schema) !== null ||
+      asRecord(payload.inputSchema) !== null ||
+      asRecord(payload.jsonSchema) !== null
+    )
+  }
+
+  function readMcpElicitationPayload(params: unknown): Record<string, unknown> | null {
+    const row = asRecord(params)
+    if (!row) return null
+    const requestParams = asRecord(asRecord(row.request)?.params)
+    if (looksLikeMcpElicitationPayload(requestParams)) return requestParams
+    const elicitationParams = asRecord(asRecord(row.elicitation)?.params)
+    if (looksLikeMcpElicitationPayload(elicitationParams)) return elicitationParams
+    const nestedParams = asRecord(row.params)
+    if (looksLikeMcpElicitationPayload(nestedParams)) return nestedParams
+    return row
+  }
+
+  function readMcpElicitationMessage(params: unknown): string {
+    const payload = readMcpElicitationPayload(params)
+    return readString(payload?.message).trim()
+  }
+
+  function readMcpElicitationMode(params: unknown): string {
+    const payload = readMcpElicitationPayload(params)
+    return readString(payload?.mode).trim().toLowerCase()
   }
 
   function pendingServerRequestStatusDetails(request: UiServerRequest): string[] {
@@ -1076,8 +1120,19 @@ export function useDesktopState() {
         details.push('工具调用等待处理')
         break
       default:
-        details.push(sanitizeDisplayText(request.method))
+        if (isMcpElicitationRequestMethod(request.method)) {
+          details.push(readMcpElicitationMode(request.params) === 'url' ? 'MCP 服务需要打开外部页面' : 'MCP 服务需要补充信息')
+        } else {
+          details.push(sanitizeDisplayText(request.method))
+        }
         break
+    }
+
+    const elicitationMessage = isMcpElicitationRequestMethod(request.method)
+      ? readMcpElicitationMessage(request.params)
+      : ''
+    if (elicitationMessage) {
+      details.push(sanitizeDisplayText(elicitationMessage))
     }
 
     const reason = readString(asRecord(request.params)?.reason).trim()

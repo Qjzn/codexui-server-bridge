@@ -152,7 +152,7 @@
                   class="live-overlay-action live-overlay-action-primary"
                   @click="scrollToPendingRequests"
                 >
-                  {{ overlayPrimaryPendingRequest.method === 'item/tool/requestUserInput' ? '去填写' : '查看请求' }}
+                  {{ isInputLikeServerRequest(overlayPrimaryPendingRequest.method) ? '去填写' : '查看请求' }}
                 </button>
               </template>
             </section>
@@ -238,6 +238,89 @@
                 <button type="button" class="request-button request-button-primary" @click="onRespondToolRequestUserInput(request)">
                   提交答案
                 </button>
+              </section>
+
+              <section v-else-if="isMcpElicitationRequest(request.method)" class="request-user-input">
+                <p v-if="readMcpElicitationIntro(request)" class="request-question-text">
+                  {{ readMcpElicitationIntro(request) }}
+                </p>
+
+                <a
+                  v-if="readMcpElicitationUrl(request)"
+                  class="request-link"
+                  :href="readMcpElicitationUrl(request)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  打开需要处理的页面
+                </a>
+
+                <div
+                  v-for="field in readMcpElicitationFields(request)"
+                  :key="`${request.id}:mcp:${field.id}`"
+                  class="request-question"
+                >
+                  <p class="request-question-title">
+                    {{ field.title }}
+                    <span v-if="field.required" class="request-required">必填</span>
+                  </p>
+                  <p v-if="field.description" class="request-question-text">{{ field.description }}</p>
+
+                  <select
+                    v-if="field.enumOptions.length > 0"
+                    class="request-select"
+                    :value="readMcpElicitationAnswer(request.id, field)"
+                    @change="onMcpElicitationAnswerChange(request.id, field.id, $event)"
+                  >
+                    <option v-if="!field.required" value="">不填写</option>
+                    <option
+                      v-for="option in field.enumOptions"
+                      :key="`${request.id}:mcp:${field.id}:${option.value}`"
+                      :value="option.value"
+                    >
+                      {{ option.label }}
+                    </option>
+                  </select>
+
+                  <label v-else-if="field.type === 'boolean'" class="request-checkbox-row">
+                    <input
+                      type="checkbox"
+                      :checked="readMcpElicitationBooleanAnswer(request.id, field)"
+                      @change="onMcpElicitationBooleanAnswerChange(request.id, field.id, $event)"
+                    />
+                    <span>是</span>
+                  </label>
+
+                  <input
+                    v-else
+                    class="request-input"
+                    :type="field.type === 'number' || field.type === 'integer' ? 'number' : 'text'"
+                    :value="readMcpElicitationAnswer(request.id, field)"
+                    :placeholder="field.required ? '请输入' : '可选'"
+                    @input="onMcpElicitationAnswerChange(request.id, field.id, $event)"
+                  />
+                </div>
+
+                <div
+                  v-if="readMcpElicitationFields(request).length === 0 && !readMcpElicitationUrl(request)"
+                  class="request-question"
+                >
+                  <p class="request-question-title">补充内容</p>
+                  <textarea
+                    class="request-textarea"
+                    :value="readMcpElicitationFallbackAnswer(request.id)"
+                    placeholder="输入后提交，Codex 会继续执行"
+                    @input="onMcpElicitationFallbackInput(request.id, $event)"
+                  />
+                </div>
+
+                <section class="request-actions">
+                  <button type="button" class="request-button request-button-primary" @click="onRespondMcpElicitation(request, 'accept')">
+                    {{ readMcpElicitationUrl(request) ? '已处理，继续' : '提交并继续' }}
+                  </button>
+                  <button type="button" class="request-button" @click="onRespondMcpElicitation(request, 'decline')">拒绝</button>
+                  <button type="button" class="request-button" @click="onRespondMcpElicitation(request, 'cancel')">稍后处理</button>
+                </section>
               </section>
 
               <section v-else-if="request.method === 'item/tool/call'" class="request-actions">
@@ -727,6 +810,7 @@ const modalImageUrl = ref('')
 const fileLinkContextMenuRef = ref<HTMLElement | null>(null)
 const toolQuestionAnswers = ref<Record<string, string>>({})
 const toolQuestionOtherAnswers = ref<Record<string, string>>({})
+const mcpElicitationAnswers = ref<Record<string, string | boolean>>({})
 const hasPendingBelowFoldUpdates = ref(false)
 const autoFollowBottom = ref(props.scrollState?.isAtBottom !== false)
 const BOTTOM_THRESHOLD_PX = 16
@@ -1197,6 +1281,23 @@ type ParsedToolQuestion = {
   question: string
   isOther: boolean
   options: string[]
+}
+
+type McpElicitationFieldType = 'string' | 'number' | 'integer' | 'boolean'
+
+type McpElicitationEnumOption = {
+  value: string
+  label: string
+}
+
+type ParsedMcpElicitationField = {
+  id: string
+  title: string
+  description: string
+  type: McpElicitationFieldType
+  required: boolean
+  defaultValue: string
+  enumOptions: McpElicitationEnumOption[]
 }
 
 type TextRange = {
@@ -2005,6 +2106,125 @@ function readRequestReason(request: UiServerRequest): string {
   return typeof reason === 'string' ? reason.trim() : ''
 }
 
+function isMcpElicitationRequest(method: string): boolean {
+  const normalized = method.trim().toLowerCase()
+  return (
+    normalized === 'mcpserver/elicitation/request' ||
+    normalized === 'mcpserver/elication/request' ||
+    normalized === 'elicitation/create'
+  )
+}
+
+function isInputLikeServerRequest(method: string): boolean {
+  return method === 'item/tool/requestUserInput' || isMcpElicitationRequest(method)
+}
+
+function looksLikeMcpElicitationPayload(payload: Record<string, unknown> | null): boolean {
+  if (!payload) return false
+  return (
+    typeof payload.message === 'string' ||
+    typeof payload.mode === 'string' ||
+    typeof payload.url === 'string' ||
+    asRecord(payload.requestedSchema) !== null ||
+    asRecord(payload.schema) !== null ||
+    asRecord(payload.inputSchema) !== null ||
+    asRecord(payload.jsonSchema) !== null
+  )
+}
+
+function readMcpElicitationPayload(request: UiServerRequest): Record<string, unknown> | null {
+  const params = asRecord(request.params)
+  if (!params) return null
+  const requestParams = asRecord(asRecord(params.request)?.params)
+  if (looksLikeMcpElicitationPayload(requestParams)) return requestParams
+  const elicitationParams = asRecord(asRecord(params.elicitation)?.params)
+  if (looksLikeMcpElicitationPayload(elicitationParams)) return elicitationParams
+  const nestedParams = asRecord(params.params)
+  if (looksLikeMcpElicitationPayload(nestedParams)) return nestedParams
+  return params
+}
+
+function readMcpElicitationIntro(request: UiServerRequest): string {
+  const payload = readMcpElicitationPayload(request)
+  const message = payload?.message
+  if (typeof message === 'string' && message.trim().length > 0) return message.trim()
+  const reason = readRequestReason(request)
+  if (reason) return reason
+  return 'MCP 服务需要你补充信息，提交后 Codex 会继续执行。'
+}
+
+function readMcpElicitationUrl(request: UiServerRequest): string {
+  const payload = readMcpElicitationPayload(request)
+  const url = payload?.url
+  return typeof url === 'string' && /^https?:\/\//iu.test(url.trim()) ? url.trim() : ''
+}
+
+function readMcpElicitationSchema(request: UiServerRequest): Record<string, unknown> | null {
+  const payload = readMcpElicitationPayload(request)
+  if (!payload) return null
+  return (
+    asRecord(payload.requestedSchema) ||
+    asRecord(payload.schema) ||
+    asRecord(payload.inputSchema) ||
+    asRecord(payload.jsonSchema)
+  )
+}
+
+function readMcpFieldType(value: unknown): McpElicitationFieldType {
+  const rawType = Array.isArray(value) ? value.find((item) => item !== 'null') : value
+  if (rawType === 'number') return 'number'
+  if (rawType === 'integer') return 'integer'
+  if (rawType === 'boolean') return 'boolean'
+  return 'string'
+}
+
+function readMcpElicitationFields(request: UiServerRequest): ParsedMcpElicitationField[] {
+  const schema = readMcpElicitationSchema(request)
+  const properties = asRecord(schema?.properties)
+  if (!properties) return []
+
+  const requiredIds = new Set(
+    Array.isArray(schema?.required)
+      ? schema.required.filter((value): value is string => typeof value === 'string')
+      : [],
+  )
+
+  return Object.entries(properties).flatMap(([id, rawField]) => {
+    const field = asRecord(rawField)
+    if (!field) return []
+
+    const enumValues = Array.isArray(field.enum)
+      ? field.enum.filter((value) => ['string', 'number', 'boolean'].includes(typeof value))
+      : []
+    const enumNames = Array.isArray(field.enumNames)
+      ? field.enumNames.filter((value): value is string => typeof value === 'string')
+      : []
+
+    const enumOptions = enumValues.map<McpElicitationEnumOption>((value, index) => ({
+      value: String(value),
+      label: enumNames[index] || String(value),
+    }))
+
+    const title = typeof field.title === 'string' && field.title.trim().length > 0
+      ? field.title.trim()
+      : id
+    const description = typeof field.description === 'string' ? field.description.trim() : ''
+    const defaultValue = ['string', 'number', 'boolean'].includes(typeof field.default)
+      ? String(field.default)
+      : ''
+
+    return [{
+      id,
+      title,
+      description,
+      type: readMcpFieldType(field.type),
+      required: requiredIds.has(id),
+      defaultValue,
+      enumOptions,
+    }]
+  })
+}
+
 function toolQuestionKey(requestId: number, questionId: string): string {
   return `${String(requestId)}:${questionId}`
 }
@@ -2071,6 +2291,100 @@ function onQuestionOtherAnswerInput(requestId: number, questionId: string, event
   }
 }
 
+function mcpElicitationKey(requestId: number, fieldId: string): string {
+  return `${String(requestId)}:mcp:${fieldId}`
+}
+
+function readMcpElicitationAnswer(requestId: number, field: ParsedMcpElicitationField): string {
+  const saved = mcpElicitationAnswers.value[mcpElicitationKey(requestId, field.id)]
+  if (typeof saved === 'string') return saved
+  if (typeof saved === 'boolean') return saved ? 'true' : 'false'
+  if (field.defaultValue) return field.defaultValue
+  const firstOption = field.enumOptions[0]
+  return field.required && firstOption ? firstOption.value : ''
+}
+
+function readMcpElicitationBooleanAnswer(requestId: number, field: ParsedMcpElicitationField): boolean {
+  const saved = mcpElicitationAnswers.value[mcpElicitationKey(requestId, field.id)]
+  if (typeof saved === 'boolean') return saved
+  if (typeof saved === 'string') return saved === 'true'
+  return field.defaultValue === 'true'
+}
+
+function onMcpElicitationAnswerChange(requestId: number, fieldId: string, event: Event): void {
+  const target = event.target
+  if (!(target instanceof HTMLInputElement) && !(target instanceof HTMLSelectElement) && !(target instanceof HTMLTextAreaElement)) return
+  mcpElicitationAnswers.value = {
+    ...mcpElicitationAnswers.value,
+    [mcpElicitationKey(requestId, fieldId)]: target.value,
+  }
+}
+
+function onMcpElicitationBooleanAnswerChange(requestId: number, fieldId: string, event: Event): void {
+  const target = event.target
+  if (!(target instanceof HTMLInputElement)) return
+  mcpElicitationAnswers.value = {
+    ...mcpElicitationAnswers.value,
+    [mcpElicitationKey(requestId, fieldId)]: target.checked,
+  }
+}
+
+function readMcpElicitationFallbackAnswer(requestId: number): string {
+  const saved = mcpElicitationAnswers.value[mcpElicitationKey(requestId, '__freeform')]
+  return typeof saved === 'string' ? saved : ''
+}
+
+function onMcpElicitationFallbackInput(requestId: number, event: Event): void {
+  const target = event.target
+  if (!(target instanceof HTMLTextAreaElement)) return
+  mcpElicitationAnswers.value = {
+    ...mcpElicitationAnswers.value,
+    [mcpElicitationKey(requestId, '__freeform')]: target.value,
+  }
+}
+
+function coerceMcpElicitationValue(field: ParsedMcpElicitationField, rawValue: string | boolean): string | number | boolean {
+  if (field.type === 'boolean') {
+    if (typeof rawValue === 'boolean') return rawValue
+    return rawValue === 'true'
+  }
+
+  const text = String(rawValue).trim()
+  if (field.type === 'number' || field.type === 'integer') {
+    const numericValue = Number(text)
+    if (Number.isFinite(numericValue)) {
+      return field.type === 'integer' ? Math.trunc(numericValue) : numericValue
+    }
+  }
+
+  return text
+}
+
+function buildMcpElicitationContent(request: UiServerRequest): Record<string, string | number | boolean> {
+  const content: Record<string, string | number | boolean> = {}
+  const fields = readMcpElicitationFields(request)
+
+  for (const field of fields) {
+    if (field.type === 'boolean') {
+      content[field.id] = readMcpElicitationBooleanAnswer(request.id, field)
+      continue
+    }
+
+    const rawValue = readMcpElicitationAnswer(request.id, field)
+    if (!field.required && rawValue.trim().length === 0) continue
+    content[field.id] = coerceMcpElicitationValue(field, rawValue)
+  }
+
+  if (fields.length === 0) {
+    const freeform = readMcpElicitationFallbackAnswer(request.id).trim()
+    if (freeform) {
+      content.response = freeform
+    }
+  }
+
+  return content
+}
+
 function onRespondApproval(requestId: number, decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel'): void {
   emit('respondServerRequest', {
     id: requestId,
@@ -2092,6 +2406,18 @@ function onRespondToolRequestUserInput(request: UiServerRequest): void {
   emit('respondServerRequest', {
     id: request.id,
     result: { answers },
+  })
+}
+
+function onRespondMcpElicitation(request: UiServerRequest, action: 'accept' | 'decline' | 'cancel'): void {
+  const result: Record<string, unknown> = { action }
+  if (action === 'accept' && !readMcpElicitationUrl(request)) {
+    result.content = buildMcpElicitationContent(request)
+  }
+
+  emit('respondServerRequest', {
+    id: request.id,
+    result,
   })
 }
 
@@ -2190,6 +2516,7 @@ function requestMethodLabel(method: string): string {
     case 'item/tool/call':
       return '工具调用等待处理'
     default:
+      if (isMcpElicitationRequest(method)) return 'MCP 服务需要补充信息'
       return method
   }
 }
@@ -2218,13 +2545,13 @@ function liveOverlayDetails(overlay: UiLiveOverlay): string[] {
 
 function liveOverlayHint(overlay: UiLiveOverlay): string {
   if (overlay.activityLabel.includes('等待确认')) {
-    return '上方有待确认请求，允许或拒绝后会继续执行。'
+    return '下方有待确认请求，允许或拒绝后会继续执行。'
   }
   if (overlay.activityLabel.includes('等待输入')) {
-    return '上方有待补充内容，提交后会继续执行。'
+    return '下方有待补充内容，提交后会继续执行。'
   }
   if (overlay.activityLabel.includes('等待处理')) {
-    return '上方有待处理请求，完成后会继续执行。'
+    return '下方有待处理请求，完成后会继续执行。'
   }
   if (overlay.activityLabel.includes('执行命令')) {
     return '命令仍在运行，输出会持续追加。'
@@ -2931,8 +3258,16 @@ onBeforeUnmount(() => {
   @apply m-0 text-sm leading-5 font-medium text-amber-900;
 }
 
+.request-required {
+  @apply ml-1 rounded-full bg-[#f3d7a4] px-1.5 py-0.5 text-[10px] font-semibold text-[#8a4a0d];
+}
+
 .request-question-text {
   @apply m-0 text-xs leading-4 text-amber-800;
+}
+
+.request-link {
+  @apply inline-flex w-fit rounded-xl border border-[#e2c486] bg-white px-3 py-1.5 text-xs font-medium text-[#8a4a0d] underline-offset-2 hover:bg-[#fff0c9] hover:underline;
 }
 
 .request-select {
@@ -2941,6 +3276,18 @@ onBeforeUnmount(() => {
 
 .request-input {
   @apply h-8 rounded-xl border border-[#e2c486] bg-white px-2 text-sm text-[#7d4911] placeholder:text-[#c28a4a];
+}
+
+.request-textarea {
+  @apply min-h-20 resize-y rounded-xl border border-[#e2c486] bg-white px-2.5 py-2 text-sm leading-5 text-[#7d4911] placeholder:text-[#c28a4a];
+}
+
+.request-checkbox-row {
+  @apply inline-flex min-h-8 w-fit items-center gap-2 rounded-xl border border-[#e2c486] bg-white px-3 py-1 text-sm text-[#7d4911];
+}
+
+.request-checkbox-row input {
+  @apply h-4 w-4 accent-[#0f766e];
 }
 
 .live-overlay-inline {

@@ -6,6 +6,29 @@
 
 - 暂无，等待下一个版本标签
 
+## v0.2.0-bridge.3
+
+发布时间：2026-04-22
+
+本次版本重点：
+
+- 修复 MCP Elicitation 待处理请求体验：
+  - Web 端现在可以识别 `mcpServer/elicitation/request` 与 `elicitation/create`
+  - 不再把底层方法名直接显示给用户
+  - 待处理请求会显示为“等待输入 / MCP 服务需要补充信息”
+  - 支持表单输入、下拉枚举、布尔选项、数字输入和 URL 打开场景
+- 修复待处理请求按钮语义：
+  - 表单模式返回 `action: accept` 与 `content`
+  - URL 模式返回 `action: accept` 且不携带表单内容
+  - 拒绝和取消分别返回 `action: decline / cancel`
+- 优化执行状态提示：
+  - 状态卡文案从“上方有待处理请求”修正为“下方有待处理请求”
+  - 避免当前底部状态卡布局下的方向误导
+- 维护验证：
+  - `vue-tsc --noEmit` 通过
+  - `npm run build:frontend` 通过
+  - 本机 `7420` 首页返回 `200`
+
 ## v0.2.0-bridge.2
 
 发布时间：2026-04-21

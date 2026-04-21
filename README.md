@@ -131,6 +131,7 @@ npx codexapp --host 0.0.0.0 --port 7420 --no-tunnel --password "change-me"
 
 当前版本主线已经覆盖这些改进：
 
+- MCP 补充信息请求现在会显示成可理解的待输入卡片，不再暴露原始 `mcpServer/elicitation/request`
 - 线程切换过程中更快响应，减少“点第二个线程还卡在第一个”的情况
 - 空线程 deep link、空线程移除、空线程恢复边界收口
 - 图片上传与本地图片回显链路修正
