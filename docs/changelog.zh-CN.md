@@ -4,7 +4,16 @@
 
 当前主线已合入但尚未单独打版本标签的改动：
 
-- 暂无，等待下一个版本标签
+- 新增 GitHub Issue 模板：
+  - Bug 报告
+  - 功能建议
+  - 安装 / 部署求助
+- 新增开源运营文档：
+  - `CONTRIBUTING.md`
+  - `SECURITY.md`
+  - `docs/roadmap.zh-CN.md`
+  - `docs/cloudflare-tunnel.zh-CN.md`
+- README 增加路线图、Cloudflare Tunnel、贡献指南和安全策略入口
 
 ## v0.2.0-bridge.3
 

@@ -1,0 +1,67 @@
+name: 安装 / 部署求助
+description: Windows、Windows Server、Linux、手机访问或隧道部署问题
+title: "[Install] "
+labels:
+  - question
+  - install
+body:
+  - type: dropdown
+    id: install_type
+    attributes:
+      label: 部署方式
+      options:
+        - Windows 一条命令安装
+        - Codex 提示词自动部署
+        - 手动 npm / npx
+        - Windows Server 常驻
+        - Cloudflare Tunnel
+        - frp / 自托管反代
+        - 其他
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: 系统
+      options:
+        - Windows 10 / 11
+        - Windows Server
+        - Ubuntu / Debian
+        - macOS
+        - Android / Termux
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: 你执行的命令
+      description: 请先删除密码、Token、真实域名等敏感内容。
+      render: powershell
+
+  - type: textarea
+    id: result
+    attributes:
+      label: 实际输出或报错
+      description: 粘贴关键日志即可，不需要完整长日志。
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 你期望达到的效果
+      placeholder: 例如：电脑运行服务，手机通过局域网或公网地址访问。
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已脱敏密码、Token、Cookie、真实公网地址和个人目录。
+          required: true
