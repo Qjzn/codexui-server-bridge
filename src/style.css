@@ -111,6 +111,23 @@ body,
   @apply border-zinc-700;
 }
 
+:root.dark .sidebar-settings-about {
+  @apply border-zinc-700;
+}
+
+:root.dark .sidebar-settings-about-label,
+:root.dark .sidebar-settings-about-meta {
+  @apply text-zinc-500;
+}
+
+:root.dark .sidebar-settings-about-version {
+  @apply text-zinc-100;
+}
+
+:root.dark .sidebar-settings-github-button {
+  @apply border-emerald-800 bg-emerald-950/60 text-emerald-200 hover:border-emerald-700 hover:bg-emerald-900/70 hover:text-emerald-100;
+}
+
 :root.dark .sidebar-settings-value {
   @apply text-zinc-400 bg-zinc-700;
 }

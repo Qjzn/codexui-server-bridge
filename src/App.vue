@@ -146,9 +146,26 @@
               <div class="sidebar-settings-rate-limits">
                 <RateLimitStatus :snapshots="accountRateLimitSnapshots" />
               </div>
-              <div class="sidebar-settings-build-label" aria-label="Worktree name and version">
-                WT {{ worktreeName }} · v{{ appVersion }}
-              </div>
+              <section class="sidebar-settings-about" aria-label="项目版本和 GitHub 仓库">
+                <div class="sidebar-settings-about-main">
+                  <div class="sidebar-settings-about-copy">
+                    <span class="sidebar-settings-about-label">当前版本</span>
+                    <strong class="sidebar-settings-about-version">{{ displayAppVersion }}</strong>
+                  </div>
+                  <button
+                    class="sidebar-settings-github-button"
+                    type="button"
+                    :title="SETTINGS_HELP.projectGithub"
+                    @click="openProjectGithub"
+                  >
+                    打开 GitHub
+                  </button>
+                </div>
+                <div class="sidebar-settings-about-meta">
+                  <span>工作区</span>
+                  <span>{{ displayWorktreeName }}</span>
+                </div>
+              </section>
             </div>
           </Transition>
           <button class="sidebar-settings-button" type="button" @click="isSettingsOpen = !isSettingsOpen">
@@ -377,6 +394,7 @@ const ComposerRuntimeDropdown = defineAsyncComponent(() => import('./components/
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'codex-web-local.sidebar-collapsed.v1'
 const worktreeName = import.meta.env.VITE_WORKTREE_NAME ?? 'unknown'
 const appVersion = import.meta.env.VITE_APP_VERSION ?? 'unknown'
+const PROJECT_GITHUB_URL = 'https://github.com/Qjzn/codexui-server-bridge'
 const SETTINGS_HELP = {
   sendWithEnter: '开启后直接按 Enter 发送，关闭后使用 Command + Enter 发送。',
   appearance: '在跟随系统、浅色和深色之间切换。',
@@ -385,6 +403,7 @@ const SETTINGS_HELP = {
   rollbackCommits: '开启后每条消息都会生成回滚提交，回滚时会重置到该消息之前的提交。',
   githubTrendingProjects: '显示或隐藏侧栏里的 GitHub 热门页面入口。',
   dictationLanguage: '选择转写语言，或保持自动识别。',
+  projectGithub: '在新标签页打开当前项目的 GitHub 仓库。',
 } as const
 const WHISPER_LANGUAGES: Record<string, string> = {
   en: 'english',
@@ -640,6 +659,15 @@ const isGithubTrendingRoute = computed(() => route.name === 'github-trending')
 const isNonThreadRoute = computed(() => (
   isHomeRoute.value || isSkillsRoute.value || isGithubTrendingRoute.value
 ))
+const displayAppVersion = computed(() => {
+  const version = String(appVersion).trim()
+  if (!version || version === 'unknown') return '未知版本'
+  return version.startsWith('v') ? version : `v${version}`
+})
+const displayWorktreeName = computed(() => {
+  const name = String(worktreeName).trim()
+  return name && name !== 'unknown' ? name : '默认工作区'
+})
 const isRouteOnlyEmptyThread = computed(() => (
   route.name === 'thread'
   && !!routeThreadId.value
@@ -1248,6 +1276,11 @@ function onBrowseThreadFiles(threadId: string): void {
   }
   if (!targetCwd || typeof window === 'undefined') return
   window.open(`/codex-local-browse${encodeURI(targetCwd)}`, '_blank', 'noopener,noreferrer')
+}
+
+function openProjectGithub(): void {
+  if (typeof window === 'undefined') return
+  window.open(PROJECT_GITHUB_URL, '_blank', 'noopener,noreferrer')
 }
 
 function onStartNewThreadFromToolbar(): void {
@@ -2498,8 +2531,36 @@ async function submitFirstMessageForNewThread(
   @apply border-t border-[#e9dfce] px-2 pt-2;
 }
 
-.sidebar-settings-build-label {
-  @apply border-t border-[#f1eadf] px-3 py-2 text-[11px] text-[#8f8577];
+.sidebar-settings-about {
+  @apply border-t border-[#f1eadf] px-3 py-2.5 flex flex-col gap-2;
+}
+
+.sidebar-settings-about-main {
+  @apply flex items-center justify-between gap-2;
+}
+
+.sidebar-settings-about-copy {
+  @apply min-w-0 flex flex-col gap-0.5;
+}
+
+.sidebar-settings-about-label {
+  @apply text-[11px] leading-4 text-[#8f8577];
+}
+
+.sidebar-settings-about-version {
+  @apply text-sm leading-5 font-semibold text-[#2d261f];
+}
+
+.sidebar-settings-github-button {
+  @apply inline-flex min-h-9 shrink-0 items-center justify-center rounded-full border border-[#cbe7e1] bg-[#f0fdfa] px-3 text-xs font-semibold text-[#0f766e] transition-colors duration-100 hover:border-[#99f6e4] hover:bg-[#ccfbf1] hover:text-[#115e59] cursor-pointer;
+}
+
+.sidebar-settings-about-meta {
+  @apply flex items-center justify-between gap-2 text-[11px] leading-4 text-[#8f8577];
+}
+
+.sidebar-settings-about-meta span:last-child {
+  @apply min-w-0 truncate text-right;
 }
 
 @media (max-width: 767px) {
@@ -2593,6 +2654,7 @@ async function submitFirstMessageForNewThread(
   .desktop-refresh-button,
   .sidebar-settings-button,
   .sidebar-settings-row,
+  .sidebar-settings-github-button,
   .desktop-refresh-confirm-button {
     transition: none !important;
   }
