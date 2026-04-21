@@ -1046,8 +1046,8 @@ export function useDesktopState() {
     return rows.sort((first, second) => first.receivedAtIso.localeCompare(second.receivedAtIso))
   })
 
-  function pendingServerRequestStatusLabel(method: string): string {
-    switch (method) {
+  function pendingServerRequestStatusLabel(request: UiServerRequest): string {
+    switch (request.method) {
       case 'item/commandExecution/requestApproval':
       case 'item/fileChange/requestApproval':
         return '等待确认'
@@ -1056,7 +1056,8 @@ export function useDesktopState() {
       case 'item/tool/call':
         return '等待处理'
       default:
-        return isMcpElicitationRequestMethod(method) ? '等待输入' : '等待处理'
+        if (isMcpPermissionPrompt(request)) return '等待授权'
+        return isMcpElicitationRequestMethod(request.method) ? '等待输入' : '等待处理'
     }
   }
 
@@ -1099,6 +1100,17 @@ export function useDesktopState() {
     return readString(payload?.message).trim()
   }
 
+  function isMcpPermissionPrompt(request: UiServerRequest): boolean {
+    if (!isMcpElicitationRequestMethod(request.method)) return false
+    const message = readMcpElicitationMessage(request.params)
+    const promptMatch = message.match(/^Allow\s+the\s+(.+?)\s+MCP\s+server\s+to\s+run\s+tool\s+["“]([^"”]+)["”]\??$/iu)
+    if (promptMatch) return true
+    const payload = readMcpElicitationPayload(request.params)
+    const serverName = readString(payload?.serverName || payload?.server).trim()
+    const toolName = readString(payload?.toolName || payload?.tool).trim()
+    return serverName.length > 0 && toolName.length > 0
+  }
+
   function readMcpElicitationMode(params: unknown): string {
     const payload = readMcpElicitationPayload(params)
     return readString(payload?.mode).trim().toLowerCase()
@@ -1120,7 +1132,9 @@ export function useDesktopState() {
         details.push('工具调用等待处理')
         break
       default:
-        if (isMcpElicitationRequestMethod(request.method)) {
+        if (isMcpPermissionPrompt(request)) {
+          details.push('MCP 工具权限确认')
+        } else if (isMcpElicitationRequestMethod(request.method)) {
           details.push(readMcpElicitationMode(request.params) === 'url' ? 'MCP 服务需要打开外部页面' : 'MCP 服务需要补充信息')
         } else {
           details.push(sanitizeDisplayText(request.method))
@@ -1151,7 +1165,7 @@ export function useDesktopState() {
     const pendingRequest = selectedThreadServerRequests.value[0]
     if (pendingRequest) {
       return {
-        activityLabel: pendingServerRequestStatusLabel(pendingRequest.method),
+        activityLabel: pendingServerRequestStatusLabel(pendingRequest),
         activityDetails: pendingServerRequestStatusDetails(pendingRequest),
         reasoningText: '',
         errorText: '',

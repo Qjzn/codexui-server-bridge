@@ -19,6 +19,7 @@
 - CLI 增加 Windows 用户目录下 `cloudflared.exe` 的自动识别
 - Cloudflare Tunnel 文档改为优先说明无需账号域名的快速隧道模式
 - Web 设置面板新增当前版本显示和 GitHub 仓库跳转按钮
+- MCP 工具权限请求改为专用确认卡片，不再误显示为补充内容输入框
 
 ## v0.2.0-bridge.3
 

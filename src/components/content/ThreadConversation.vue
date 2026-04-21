@@ -152,7 +152,7 @@
                   class="live-overlay-action live-overlay-action-primary"
                   @click="scrollToPendingRequests"
                 >
-                  {{ isInputLikeServerRequest(overlayPrimaryPendingRequest.method) ? '去填写' : '查看请求' }}
+                  {{ pendingRequestActionLabel(overlayPrimaryPendingRequest) }}
                 </button>
               </template>
             </section>
@@ -189,7 +189,7 @@
           </button>
           <div v-if="isRequestPanelExpanded" class="conversation-process-stack">
             <article v-for="request in pendingRequests" :key="`panel-request:${request.id}`" class="request-card">
-              <p class="request-title">{{ requestMethodLabel(request.method) }}</p>
+              <p class="request-title">{{ requestTitleLabel(request) }}</p>
               <p class="request-meta">请求 #{{ request.id }} · {{ formatIsoTime(request.receivedAtIso) }}</p>
 
               <p v-if="readRequestReason(request)" class="request-reason">{{ readRequestReason(request) }}</p>
@@ -241,6 +241,36 @@
               </section>
 
               <section v-else-if="isMcpElicitationRequest(request.method)" class="request-user-input">
+                <template v-if="isMcpPermissionElicitationRequest(request)">
+                  <div class="request-permission-panel">
+                    <span class="request-permission-badge">权限确认</span>
+                    <p class="request-permission-title">{{ readMcpPermissionTitle(request) }}</p>
+                    <p class="request-permission-text">{{ readMcpPermissionSummary(request) }}</p>
+                    <dl class="request-permission-grid">
+                      <div class="request-permission-item">
+                        <dt class="request-permission-term">服务</dt>
+                        <dd class="request-permission-value">{{ readMcpPermissionServerName(request) }}</dd>
+                      </div>
+                      <div class="request-permission-item">
+                        <dt class="request-permission-term">工具</dt>
+                        <dd class="request-permission-value">{{ readMcpPermissionToolName(request) }}</dd>
+                      </div>
+                    </dl>
+                    <p class="request-permission-note">
+                      允许后 Codex 会继续本次自动化操作；拒绝后相关浏览器操作可能中止。
+                    </p>
+                  </div>
+
+                  <section class="request-actions request-actions-prominent">
+                    <button type="button" class="request-button request-button-primary" @click="onRespondMcpElicitation(request, 'accept')">
+                      允许并继续
+                    </button>
+                    <button type="button" class="request-button" @click="onRespondMcpElicitation(request, 'decline')">拒绝</button>
+                    <button type="button" class="request-button" @click="onRespondMcpElicitation(request, 'cancel')">稍后处理</button>
+                  </section>
+                </template>
+
+                <template v-else>
                 <p v-if="readMcpElicitationIntro(request)" class="request-question-text">
                   {{ readMcpElicitationIntro(request) }}
                 </p>
@@ -321,6 +351,7 @@
                   <button type="button" class="request-button" @click="onRespondMcpElicitation(request, 'decline')">拒绝</button>
                   <button type="button" class="request-button" @click="onRespondMcpElicitation(request, 'cancel')">稍后处理</button>
                 </section>
+                </template>
               </section>
 
               <section v-else-if="request.method === 'item/tool/call'" class="request-actions">
@@ -1300,6 +1331,11 @@ type ParsedMcpElicitationField = {
   enumOptions: McpElicitationEnumOption[]
 }
 
+type ParsedMcpPermissionPrompt = {
+  serverName: string
+  toolName: string
+}
+
 type TextRange = {
   start: number
   end: number
@@ -2153,6 +2189,55 @@ function readMcpElicitationIntro(request: UiServerRequest): string {
   return 'MCP 服务需要你补充信息，提交后 Codex 会继续执行。'
 }
 
+function readMcpPermissionPrompt(request: UiServerRequest): ParsedMcpPermissionPrompt | null {
+  const payload = readMcpElicitationPayload(request)
+  const message = readMcpElicitationIntro(request)
+  const serverNameFromPayload = typeof payload?.serverName === 'string'
+    ? payload.serverName.trim()
+    : typeof payload?.server === 'string'
+      ? payload.server.trim()
+      : ''
+  const toolNameFromPayload = typeof payload?.toolName === 'string'
+    ? payload.toolName.trim()
+    : typeof payload?.tool === 'string'
+      ? payload.tool.trim()
+      : ''
+
+  const promptMatch = message.match(/^Allow\s+the\s+(.+?)\s+MCP\s+server\s+to\s+run\s+tool\s+["“]([^"”]+)["”]\??$/iu)
+  const serverName = (promptMatch?.[1] ?? serverNameFromPayload).trim()
+  const toolName = (promptMatch?.[2] ?? toolNameFromPayload).trim()
+
+  if (!serverName || !toolName) return null
+  return {
+    serverName,
+    toolName,
+  }
+}
+
+function isMcpPermissionElicitationRequest(request: UiServerRequest): boolean {
+  return isMcpElicitationRequest(request.method) && readMcpPermissionPrompt(request) !== null
+}
+
+function readMcpPermissionServerName(request: UiServerRequest): string {
+  return readMcpPermissionPrompt(request)?.serverName || '未知 MCP 服务'
+}
+
+function readMcpPermissionToolName(request: UiServerRequest): string {
+  return readMcpPermissionPrompt(request)?.toolName || '未知工具'
+}
+
+function readMcpPermissionTitle(request: UiServerRequest): string {
+  const toolName = readMcpPermissionToolName(request)
+  if (toolName.startsWith('browser_')) return '浏览器自动化请求权限'
+  return 'MCP 工具请求权限'
+}
+
+function readMcpPermissionSummary(request: UiServerRequest): string {
+  const prompt = readMcpPermissionPrompt(request)
+  if (!prompt) return '外部 MCP 服务正在请求运行工具。'
+  return `${prompt.serverName} 想运行 ${prompt.toolName}，用于继续当前任务。`
+}
+
 function readMcpElicitationUrl(request: UiServerRequest): string {
   const payload = readMcpElicitationPayload(request)
   const url = payload?.url
@@ -2521,11 +2606,21 @@ function requestMethodLabel(method: string): string {
   }
 }
 
+function requestTitleLabel(request: UiServerRequest): string {
+  if (isMcpPermissionElicitationRequest(request)) return 'MCP 工具权限确认'
+  return requestMethodLabel(request.method)
+}
+
 function isApprovalRequestMethod(method: string): boolean {
   return (
     method === 'item/commandExecution/requestApproval' ||
     method === 'item/fileChange/requestApproval'
   )
+}
+
+function pendingRequestActionLabel(request: UiServerRequest): string {
+  if (isMcpPermissionElicitationRequest(request)) return '去确认'
+  return isInputLikeServerRequest(request.method) ? '去填写' : '查看请求'
 }
 
 function liveOverlayPrimaryLabel(overlay: UiLiveOverlay): string {
@@ -2544,6 +2639,9 @@ function liveOverlayDetails(overlay: UiLiveOverlay): string[] {
 }
 
 function liveOverlayHint(overlay: UiLiveOverlay): string {
+  if (overlay.activityLabel.includes('等待授权')) {
+    return '下方有权限确认，允许或拒绝后会继续执行。'
+  }
   if (overlay.activityLabel.includes('等待确认')) {
     return '下方有待确认请求，允许或拒绝后会继续执行。'
   }
@@ -3238,6 +3336,10 @@ onBeforeUnmount(() => {
   @apply flex flex-wrap gap-1.5 sm:gap-2;
 }
 
+.request-actions-prominent {
+  @apply pt-0.5;
+}
+
 .request-button {
   @apply rounded-xl border border-[#e2c486] bg-white px-3 py-1.5 text-xs text-[#7d4911] hover:bg-[#fff0c9];
 }
@@ -3248,6 +3350,42 @@ onBeforeUnmount(() => {
 
 .request-user-input {
   @apply flex flex-col gap-2.5;
+}
+
+.request-permission-panel {
+  @apply rounded-2xl border border-[#ead9b5] bg-white/70 px-3 py-3 flex flex-col gap-2;
+}
+
+.request-permission-badge {
+  @apply w-fit rounded-full border border-[#cbe7e1] bg-[#f0fdfa] px-2 py-0.5 text-[10px] font-semibold tracking-[0.08em] text-[#0f766e];
+}
+
+.request-permission-title {
+  @apply m-0 text-base leading-6 font-semibold text-[#3a2a14];
+}
+
+.request-permission-text {
+  @apply m-0 text-sm leading-5 text-[#6a3a0b];
+}
+
+.request-permission-grid {
+  @apply m-0 grid grid-cols-1 sm:grid-cols-2 gap-2;
+}
+
+.request-permission-item {
+  @apply rounded-xl border border-[#f1dfba] bg-[#fffaf0] px-2.5 py-2;
+}
+
+.request-permission-term {
+  @apply text-[11px] leading-4 text-[#ad6b28];
+}
+
+.request-permission-value {
+  @apply m-0 break-all font-mono text-xs leading-5 text-[#3a2a14];
+}
+
+.request-permission-note {
+  @apply m-0 rounded-xl bg-[#f8edda] px-2.5 py-2 text-xs leading-5 text-[#7d4911];
 }
 
 .request-question {

@@ -526,6 +526,33 @@ body,
   @apply text-amber-200;
 }
 
+:root.dark .request-permission-panel {
+  @apply border-amber-800 bg-zinc-800/70;
+}
+
+:root.dark .request-permission-badge {
+  @apply border-emerald-800 bg-emerald-950/60 text-emerald-200;
+}
+
+:root.dark .request-permission-title,
+:root.dark .request-permission-value {
+  @apply text-zinc-100;
+}
+
+:root.dark .request-permission-text,
+:root.dark .request-permission-note {
+  @apply text-amber-200;
+}
+
+:root.dark .request-permission-item,
+:root.dark .request-permission-note {
+  @apply border-amber-800 bg-amber-950/30;
+}
+
+:root.dark .request-permission-term {
+  @apply text-amber-400;
+}
+
 :root.dark .request-button {
   @apply border-amber-700 bg-zinc-800 text-amber-200 hover:bg-zinc-700;
 }
