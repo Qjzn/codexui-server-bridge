@@ -86,7 +86,6 @@ jobs:
         shell: pwsh
         env:
           APP_VERSION_NAME: ${{ github.ref_name }}
-          APP_VERSION_CODE: ${{ github.run_number }}
         run: |
           Push-Location android
           .\gradlew.bat assembleRelease

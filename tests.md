@@ -494,12 +494,13 @@ This file tracks manual regression and feature verification steps.
 4. 执行 `npm run mobile:android:sync`。
 5. 执行 `.\gradlew.bat assembleRelease`。
 6. 检查 release APK 的 `versionName` 为当前 `package.json` 版本，`versionCode` 按 `major * 10000 + minor * 100 + patch` 递增。
+7. 推送数字 tag 触发 GitHub Release 时，确认 `.github/workflows/release.yml` 未覆盖 `APP_VERSION_CODE`，Actions 构建也应使用同一套版本码规则。
 
 #### Expected Results
 - 自动化回归全部通过。
 - Android Web 资源同步成功。
 - release APK 构建成功。
-- `2.1.2` 对应 `versionCode=20102`，可覆盖安装旧 `2.1.1` 构建。
+- 本地和 GitHub Actions 产出的 `2.1.2` 都对应 `versionCode=20102`，可覆盖安装旧 `2.1.1` 构建。
 
 #### Rollback/Cleanup
-- 若需回退，恢复 `package.json`、`package-lock.json`、`android/app/build.gradle` 与 `docs/changelog.zh-CN.md`。
+- 若需回退，恢复 `package.json`、`package-lock.json`、`android/app/build.gradle`、`.github/workflows/release.yml` 与 `docs/changelog.zh-CN.md`。
