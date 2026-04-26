@@ -500,7 +500,7 @@ This file tracks manual regression and feature verification steps.
 - 自动化回归全部通过。
 - Android Web 资源同步成功。
 - release APK 构建成功。
-- 本地和 GitHub Actions 产出的 `2.1.2` 都对应 `versionCode=20102`，可覆盖安装旧 `2.1.1` 构建。
+- 本地和 GitHub Actions 产出的数字版本都对应 `major * 10000 + minor * 100 + patch` 版本码，可覆盖安装上一版构建。
 
 #### Rollback/Cleanup
 - 若需回退，恢复 `package.json`、`package-lock.json`、`android/app/build.gradle`、`.github/workflows/release.yml` 与 `docs/changelog.zh-CN.md`。
@@ -557,3 +557,29 @@ This file tracks manual regression and feature verification steps.
 
 #### Rollback/Cleanup
 - 若需回退，移除 `scripts/soak-7420.ps1`，并恢复 `package.json` 和本测试说明。
+
+---
+
+### Feature: 2.1.3 稳定版发布验证
+
+#### Prerequisites
+- `7420` 服务运行中。
+- 本轮后台同步减压和浸泡脚本改动已构建进前端与 CLI。
+- Android SDK、JDK、release 签名配置可用。
+
+#### Steps
+1. 执行 `npm run build`。
+2. 执行 `npm run test:7420 -- -ScreenshotDir output\regression-7420-2.1.3`。
+3. 执行 `npm run mobile:android:sync`。
+4. 在 `android` 目录执行 `.\gradlew.bat assembleRelease`。
+5. 检查 APK `versionName=2.1.3`、`versionCode=20103`。
+6. 核对 2 小时浸泡报告：`soak-20260427-025140.json`、`soak-20260427-032159.json`、`soak-20260427-035212.json`、`soak-20260427-042233.json`。
+
+#### Expected Results
+- Web/CLI 构建通过。
+- 本机、公网、事件回放、通知游标恢复、桌面/手机/折叠屏自动化回归通过。
+- 四段浸泡累计 480 个采样点均通过，新增 RPC timeout 为 `0`，最大 `queuedRpcCount=2`，最大 `pendingRpcCount=1`。
+- Android release APK 构建通过并可作为 `2.1.3` GitHub Release 资产发布。
+
+#### Rollback/Cleanup
+- 若需回退，恢复 `package.json`、`package-lock.json`、`docs/changelog.zh-CN.md` 与本测试记录。
