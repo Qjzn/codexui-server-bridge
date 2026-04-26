@@ -532,3 +532,28 @@ This file tracks manual regression and feature verification steps.
 
 #### Rollback/Cleanup
 - 若需回退，恢复 `src/composables/useDesktopState.ts` 中后台同步间隔和线程列表刷新判断。
+
+---
+
+### Feature: 7420 稳定性浸泡测试脚本
+
+#### Prerequisites
+- `7420` 服务运行中。
+- 本机可访问 `http://127.0.0.1:7420/health` 与 `http://127.0.0.1:7420/codex-api/health`。
+- 若不跳过公网检查，公网入口 `http://116.62.234.104:17420/health` 可访问。
+
+#### Steps
+1. 短时验证脚本：执行 `npm run test:7420:soak -- -DurationSeconds 90 -IntervalSeconds 15`。
+2. 发布前浸泡：执行 `npm run test:7420:soak -- -DurationSeconds 7200 -IntervalSeconds 15`。
+3. 如只验证本机稳定性，可追加 `-SkipPublic`。
+4. 查看 `output\soak-7420\soak-*.json` 报告。
+
+#### Expected Results
+- 脚本在每个采样点输出本机、公网、API、pending/queued RPC、timeout 和慢 `thread/list` 信息。
+- 没有连续健康检查失败。
+- `queuedRpcCount` 与 `pendingRpcCount` 不超过阈值。
+- 浸泡窗口内不出现新的 RPC timeout。
+- 脚本退出码为 `0`，JSON 报告 `summary.passed=true`。
+
+#### Rollback/Cleanup
+- 若需回退，移除 `scripts/soak-7420.ps1`，并恢复 `package.json` 和本测试说明。

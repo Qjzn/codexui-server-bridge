@@ -12,6 +12,8 @@
   - 后台和 Android resume 不再按固定间隔反复拉重型 `thread/list`
   - 运行态优先使用 runtime snapshot、事件回放和当前会话消息同步，降低 RPC 队列被列表读取长期占用的概率
   - 后端对 `thread/list` 增加短缓存和结构变化失效保护，即使旧页面或多端仍在轮询，也不会持续压住 app-server
+- 稳定性验证工程化：
+  - 新增 `npm run test:7420:soak`，可按固定间隔采样本机、公网、RPC 队列和 timeout，并输出 JSON 报告
 - 保持版本号规则：继续使用纯数字 `2.1.x`，不再使用英文后缀
 
 ## 2.1.1
