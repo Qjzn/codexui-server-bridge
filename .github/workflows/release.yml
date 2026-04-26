@@ -12,6 +12,12 @@ permissions:
 jobs:
   release:
     runs-on: windows-latest
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      ANDROID_DEFAULT_SERVER_URL: ${{ secrets.ANDROID_DEFAULT_SERVER_URL }}
 
     steps:
       - name: Checkout repository
@@ -37,46 +43,46 @@ jobs:
             -OutputDir "${env:RUNNER_TEMP}\release"
 
       - name: Set up Java 24 for Android
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '24'
 
       - name: Set up Android SDK
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
         uses: android-actions/setup-android@v3
 
       - name: Install Android build packages
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
         shell: pwsh
         run: |
           sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Prepare Android signing files
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
         shell: pwsh
         run: |
           $keystoreDir = Join-Path $env:RUNNER_TEMP 'android-signing'
           New-Item -ItemType Directory -Force -Path $keystoreDir | Out-Null
           $keystorePath = Join-Path $keystoreDir 'cx-codex-release.jks'
-          [System.IO.File]::WriteAllBytes($keystorePath, [Convert]::FromBase64String("${{ secrets.ANDROID_KEYSTORE_BASE64 }}"))
+          [System.IO.File]::WriteAllBytes($keystorePath, [Convert]::FromBase64String($env:ANDROID_KEYSTORE_BASE64))
           @"
           storeFile=$keystorePath
-          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
-          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          storePassword=$env:ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$env:ANDROID_KEY_ALIAS
+          keyPassword=$env:ANDROID_KEY_PASSWORD
           "@ | Set-Content -Path "android/keystore.properties" -Encoding UTF8
 
       - name: Sync Android shell
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
         shell: pwsh
         env:
-          CAP_SERVER_URL: ${{ secrets.ANDROID_DEFAULT_SERVER_URL }}
+          CAP_SERVER_URL: ${{ env.ANDROID_DEFAULT_SERVER_URL }}
         run: npm run mobile:android:sync
 
       - name: Build Android release APK
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
         shell: pwsh
         env:
           APP_VERSION_NAME: ${{ github.ref_name }}
@@ -87,7 +93,7 @@ jobs:
           Pop-Location
 
       - name: Collect Android release artifacts
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
         shell: pwsh
         run: |
           $outputDir = Join-Path $env:RUNNER_TEMP 'release'
