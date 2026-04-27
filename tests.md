@@ -583,3 +583,54 @@ This file tracks manual regression and feature verification steps.
 
 #### Rollback/Cleanup
 - 若需回退，恢复 `package.json`、`package-lock.json`、`docs/changelog.zh-CN.md` 与本测试记录。
+
+---
+
+### Feature: thread/list stale-while-revalidate 缓存
+
+#### Prerequisites
+- `7420` 服务运行中。
+- 至少有一个会话列表缓存可由 `thread/list` 建立。
+- `/codex-api/health` 可查看 RPC 队列和慢请求诊断。
+
+#### Steps
+1. 连续打开 Web 端和 Android 端，模拟多端同时访问会话列表。
+2. 等待 `thread/list` 首次成功返回并写入缓存。
+3. 在 3 分钟新鲜期内重复触发后台同步或手动进入页面。
+4. 超过新鲜期后再次触发列表读取，观察页面是否先返回已有列表，同时后台刷新缓存。
+5. 查看 `/codex-api/health` 的 `queuedRpcCount`、`pendingRpcCount` 和 `recentTimeouts`。
+6. 新建、归档或重命名会话，确认结构变化仍会清理列表缓存并刷新列表。
+
+#### Expected Results
+- 新鲜期内重复 `thread/list` 不进入 app-server RPC 队列。
+- 缓存过期但仍在兜底窗口内时，前端不等待慢列表 RPC 才恢复页面。
+- 后台刷新同一缓存键时只保留一轮 in-flight 请求。
+- 结构变化后缓存失效，列表最终反映新建、归档或重命名结果。
+- `recentTimeouts` 不应因为列表刷新增加。
+
+#### Rollback/Cleanup
+- 若需回退，恢复 `src/server/codexAppServerBridge.ts` 中 `thread/list` 缓存读取和刷新逻辑。
+
+---
+
+### Feature: Android 启动地址兜底
+
+#### Prerequisites
+- Android release APK 已构建。
+- 可用 `aapt` 检查 APK 版本和 Manifest。
+- 真机可安装 APK 时，优先连接 `adb` 抓启动日志。
+
+#### Steps
+1. 构建未显式传入 `CAP_SERVER_URL` 的 APK。
+2. 启动 App，确认不会因为空 `serverUrl` 在原生初始化阶段闪退。
+3. 构建默认公网地址 APK，检查 `android/app/src/main/assets/capacitor.config.json` 包含 `server.url`。
+4. 安装默认公网地址 APK，打开 App。
+5. 如仍闪退，连接真机执行 `adb logcat -d -t 300 | Select-String "com.codexui.bridge|AndroidRuntime|FATAL EXCEPTION"`。
+
+#### Expected Results
+- 未配置远程地址时，原生层不会把空字符串传给 Capacitor `serverUrl`。
+- 默认打包脚本会写入当前公网地址 `http://116.62.234.104:17420`。
+- APK 可启动到 WebView；公网不可用时应显示页面加载错误或 Web 侧状态，而不是原生闪退。
+
+#### Rollback/Cleanup
+- 若需回退，恢复 `android/app/src/main/java/com/codexui/bridge/MainActivity.java` 与 `scripts/package-android-release.ps1`。

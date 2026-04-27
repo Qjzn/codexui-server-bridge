@@ -1,6 +1,6 @@
 {
   "name": "codexapp",
-  "version": "2.1.3",
+  "version": "2.1.4",
   "description": "OpenAI Codex web UI and browser bridge for Windows, Linux, Android, LAN, and remote self-hosted access",
   "type": "module",
   "license": "MIT",

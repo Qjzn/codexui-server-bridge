@@ -179,6 +179,12 @@ type CachedThreadRead = {
 type CachedRpcResponse = {
   value: unknown
   cachedAtMs: number
+  refreshStartedAtMs: number
+}
+
+type CachedRpcRead = {
+  value: unknown
+  stale: boolean
 }
 
 type PendingRpc = {
@@ -262,7 +268,9 @@ const APP_SERVER_RPC_TIMEOUT_RESTART_THRESHOLD = 3
 const APP_SERVER_RESTART_COOLDOWN_MS = 10_000
 const APP_SERVER_COLD_START_GRACE_MS = 60_000
 const APP_SERVER_RPC_DIAGNOSTIC_LIMIT = 20
-const APP_SERVER_THREAD_LIST_CACHE_TTL_MS = 45_000
+const APP_SERVER_THREAD_LIST_FRESH_CACHE_TTL_MS = 3 * 60_000
+const APP_SERVER_THREAD_LIST_STALE_CACHE_TTL_MS = 20 * 60_000
+const APP_SERVER_THREAD_LIST_BACKGROUND_REFRESH_MIN_INTERVAL_MS = 30_000
 const RUNTIME_SNAPSHOT_STALE_MS = 90_000
 const BRIDGE_HEARTBEAT_METHOD = 'bridge/heartbeat'
 const DEFAULT_WEB_BRIDGE_SETTINGS: WebBridgeSettings = {
@@ -2185,26 +2193,68 @@ class AppServerProcess {
     this.cachedThreadListRpcByKey.clear()
   }
 
-  private readCachedThreadListRpc(shareableKey: string): unknown | null {
+  private readCachedThreadListRpc(shareableKey: string, allowStale = false): CachedRpcRead | null {
     const cached = this.cachedThreadListRpcByKey.get(shareableKey)
     if (!cached) return null
-    if (Date.now() - cached.cachedAtMs > APP_SERVER_THREAD_LIST_CACHE_TTL_MS) {
-      this.cachedThreadListRpcByKey.delete(shareableKey)
-      return null
+    const ageMs = Date.now() - cached.cachedAtMs
+    if (ageMs <= APP_SERVER_THREAD_LIST_FRESH_CACHE_TTL_MS) {
+      return { value: cached.value, stale: false }
     }
-    return cached.value
+    if (allowStale && ageMs <= APP_SERVER_THREAD_LIST_STALE_CACHE_TTL_MS) {
+      return { value: cached.value, stale: true }
+    }
+    if (ageMs > APP_SERVER_THREAD_LIST_STALE_CACHE_TTL_MS) {
+      this.cachedThreadListRpcByKey.delete(shareableKey)
+    }
+    return null
   }
 
   private writeCachedThreadListRpc(shareableKey: string, value: unknown): void {
     this.cachedThreadListRpcByKey.set(shareableKey, {
       value,
       cachedAtMs: Date.now(),
+      refreshStartedAtMs: 0,
     })
     if (this.cachedThreadListRpcByKey.size <= 20) return
     const oldestKey = this.cachedThreadListRpcByKey.keys().next().value
     if (typeof oldestKey === 'string') {
       this.cachedThreadListRpcByKey.delete(oldestKey)
     }
+  }
+
+  private refreshThreadListCacheInBackground(shareableKey: string, params: unknown): void {
+    if (this.sharedReadRpcByKey.has(shareableKey)) return
+
+    const cached = this.cachedThreadListRpcByKey.get(shareableKey)
+    const now = Date.now()
+    if (
+      cached?.refreshStartedAtMs &&
+      now - cached.refreshStartedAtMs < APP_SERVER_THREAD_LIST_BACKGROUND_REFRESH_MIN_INTERVAL_MS
+    ) {
+      return
+    }
+    if (cached) {
+      cached.refreshStartedAtMs = now
+    }
+
+    const request = this.enqueueRpc('thread/list', params)
+      .then((value) => {
+        this.writeCachedThreadListRpc(shareableKey, value)
+        return value
+      })
+      .catch((error) => {
+        logBridgeError('Background thread/list refresh failed', error)
+        const current = this.cachedThreadListRpcByKey.get(shareableKey)
+        if (current) {
+          current.refreshStartedAtMs = 0
+        }
+        return null
+      })
+      .finally(() => {
+        this.sharedReadRpcByKey.delete(shareableKey)
+      })
+
+    this.sharedReadRpcByKey.set(shareableKey, request)
   }
 
   private finalizePendingRpc(id: number): PendingRpc | null {
@@ -2648,9 +2698,12 @@ class AppServerProcess {
     }
 
     if (method === 'thread/list') {
-      const cached = this.readCachedThreadListRpc(shareableKey)
-      if (cached !== null) {
-        return cached
+      const cached = this.readCachedThreadListRpc(shareableKey, true)
+      if (cached) {
+        if (cached.stale) {
+          this.refreshThreadListCacheInBackground(shareableKey, params)
+        }
+        return cached.value
       }
     }
 

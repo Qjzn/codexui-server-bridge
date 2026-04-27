@@ -18,9 +18,8 @@ public class MainActivity extends BridgeActivity {
         String serverUrl = MobileShellConfig.resolveServerUrl(this, defaultConfig.getServerUrl());
         boolean allowMixedContent = defaultConfig.isMixedContentAllowed() || serverUrl.startsWith("http://");
 
-        return new CapConfig.Builder(this)
+        CapConfig.Builder builder = new CapConfig.Builder(this)
             .setHTML5mode(defaultConfig.isHTML5Mode())
-            .setServerUrl(serverUrl)
             .setErrorPath(defaultConfig.getErrorPath())
             .setHostname(defaultConfig.getHostname())
             .setStartPath(defaultConfig.getStartPath())
@@ -36,7 +35,12 @@ public class MainActivity extends BridgeActivity {
             .setWebContentsDebuggingEnabled(defaultConfig.isWebContentsDebuggingEnabled())
             .setZoomableWebView(defaultConfig.isZoomableWebView())
             .setLoggingEnabled(defaultConfig.isLoggingEnabled())
-            .setInitialFocus(defaultConfig.isInitialFocus())
-            .create();
+            .setInitialFocus(defaultConfig.isInitialFocus());
+
+        if (!serverUrl.isEmpty()) {
+            builder.setServerUrl(serverUrl);
+        }
+
+        return builder.create();
     }
 }

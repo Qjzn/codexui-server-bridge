@@ -2,11 +2,11 @@
   [Parameter(Mandatory = $true)]
   [string]$Version,
 
-  [string]$ServerUrl,
+  [string]$ServerUrl = 'http://116.62.234.104:17420',
 
   [string]$OutputDir,
 
-  [int]$VersionCode = 1
+  [Nullable[int]]$VersionCode
 )
 
 $ErrorActionPreference = 'Stop'
@@ -51,7 +51,11 @@ $env:JAVA_HOME = $resolvedJavaHome
 $env:ANDROID_SDK_ROOT = $resolvedAndroidSdk
 $env:ANDROID_HOME = $resolvedAndroidSdk
 $env:APP_VERSION_NAME = $Version
-$env:APP_VERSION_CODE = [string]$VersionCode
+if ($null -ne $VersionCode) {
+  $env:APP_VERSION_CODE = [string]$VersionCode
+} else {
+  Remove-Item Env:APP_VERSION_CODE -ErrorAction SilentlyContinue
+}
 
 Push-Location $repoRoot
 try {
