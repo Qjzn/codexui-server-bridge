@@ -634,3 +634,32 @@ This file tracks manual regression and feature verification steps.
 
 #### Rollback/Cleanup
 - 若需回退，恢复 `android/app/src/main/java/com/codexui/bridge/MainActivity.java` 与 `scripts/package-android-release.ps1`。
+
+---
+
+### Feature: 会话切换主内容优先加载
+
+#### Prerequisites
+- `7420` 服务运行中，当前构建已包含 `2.1.5` 切换链路优化。
+- 至少准备两个已有消息会话，其中一个会话上下文进度尚未缓存或 token 统计可能需要从 session log 补齐。
+
+#### Steps
+1. 打开 Web 或 Android 端会话列表。
+2. 从会话 A 切换到会话 B。
+3. 观察主内容区消息是否优先出现。
+4. 打开 `/codex-api/health`，观察切换时 `recentSlowRpc` 中是否还先出现无必要的 `thread/resume`。
+5. 观察上下文进度条：未就绪时可显示占位，稍后后台补齐。
+6. 直接通过 URL 打开一个会话路由，确认不会先等待完整 runtime snapshot 校验再进入页面。
+7. 连续快速切换两个会话，观察 Network 中同一会话是否只保留一条主 `/codex-api/state/thread/:id` 读取。
+8. 等待一次后台 `thread/list` 慢刷新，再切换会话，确认主内容读取不会长期排在列表刷新后面。
+
+#### Expected Results
+- 正常已有会话切换不应先发 `thread/resume`，主 `thread/read` 优先执行。
+- 上下文 token 统计不阻塞消息首屏显示。
+- 同一会话不会因为后台同步和点击选择同时触发重复主内容读取。
+- 慢 `thread/list` 只能后台更新列表，不应阻塞当前会话主内容首屏。
+- 如果会话确实未物化，才允许执行 `thread/resume` 后重试读取。
+- 路由进入会话时先选择会话并加载主内容，失败再由内容加载链路呈现错误。
+
+#### Rollback/Cleanup
+- 若需回退，恢复 `src/composables/useDesktopState.ts`、`src/server/codexAppServerBridge.ts`、`src/api/codexGateway.ts` 与 `src/App.vue`。

@@ -810,7 +810,6 @@ import {
   getHomeDirectory,
   getProjectRootSuggestion,
   getTunnelStatus,
-  getThreadRuntimeSnapshot,
   getWebBridgeSettings,
   getWorkspaceRootsState,
   openProjectRoot,
@@ -3355,16 +3354,6 @@ async function syncThreadSelectionWithRoute(): Promise<void> {
     if (route.name === 'thread') {
       const threadId = routeThreadId.value
       if (!threadId) return
-
-      if (!routableThreadIdSet.value.has(threadId)) {
-        try {
-          await getThreadRuntimeSnapshot(threadId)
-          rememberRoutableThreadId(threadId)
-        } catch {
-          await router.replace({ name: 'home' })
-          return
-        }
-      }
 
       if (selectedThreadId.value !== threadId) {
         void selectThread(threadId)

@@ -641,6 +641,33 @@ export async function getThreadRuntimeStatusSnapshot(
   }
 }
 
+export async function getThreadTokenUsage(
+  threadId: string,
+  options: RpcCallOptions = {},
+): Promise<UiThreadTokenUsage | null> {
+  const response = await fetchWithTimeout(`/codex-api/thread-token-usage?threadId=${encodeURIComponent(threadId)}`, {
+    signal: options.signal,
+  }, {
+    timeoutMs: GATEWAY_BACKGROUND_FETCH_TIMEOUT_MS,
+    label: `Thread token usage request for ${threadId}`,
+  })
+
+  const payload = (await response.json()) as unknown
+  if (!response.ok) {
+    throw new Error(getErrorMessageFromPayload(payload, `Failed to load thread token usage ${threadId}`))
+  }
+
+  const record =
+    payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? (payload as Record<string, unknown>)
+      : {}
+  const data =
+    record.data && typeof record.data === 'object' && !Array.isArray(record.data)
+      ? (record.data as Record<string, unknown>)
+      : {}
+  return normalizeThreadTokenUsage(data.tokenUsage)
+}
+
 export async function getThreadGroups(options: RpcCallOptions = {}): Promise<UiProjectGroup[]> {
   try {
     return await getThreadGroupsV2(options)

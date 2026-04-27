@@ -12,6 +12,7 @@ import {
   getThreadDetail,
   getThreadRuntimeSnapshot,
   getThreadRuntimeStatusSnapshot,
+  getThreadTokenUsage,
   interruptThreadTurn,
   replyToServerRequest,
   rollbackThread,
@@ -140,6 +141,7 @@ const UNKNOWN_ACTIVE_TURN_ID = '__unknown_active_turn__'
 const LIVE_DELTA_BATCH_MS = 48
 const NOTIFICATION_STALE_MS = 18000
 const THREAD_LIST_REFRESH_INTERVAL_MS = 180000
+const THREAD_TOKEN_USAGE_REFRESH_RETRY_MS = 5 * 60 * 1000
 const RATE_LIMIT_REFRESH_DEBOUNCE_MS = 500
 const RATE_LIMIT_REFRESH_MIN_INTERVAL_MS = 120000
 const REASONING_EFFORT_OPTIONS: ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']
@@ -996,6 +998,9 @@ export function useDesktopState() {
   const liveReasoningTextByThreadId = ref<Record<string, string>>({})
   const liveCommandsByThreadId = ref<Record<string, UiMessage[]>>({})
   const threadTokenUsageByThreadId = ref<Record<string, UiThreadTokenUsage>>({})
+  const tokenUsageRefreshInFlightByThreadId = new Map<string, Promise<void>>()
+  const tokenUsageRefreshAttemptedAtByThreadId = new Map<string, number>()
+  const messageLoadInFlightByThreadId = new Map<string, Promise<void>>()
   const inProgressById = ref<Record<string, boolean>>({})
   type PendingTurnRequest = {
     text: string
@@ -1939,6 +1944,31 @@ export function useDesktopState() {
     if (previous) {
       threadTokenUsageByThreadId.value = omitKey(threadTokenUsageByThreadId.value, threadId)
     }
+  }
+
+  function refreshThreadTokenUsageInBackground(threadId: string): void {
+    const normalizedThreadId = threadId.trim()
+    if (!normalizedThreadId) return
+    if (threadTokenUsageByThreadId.value[normalizedThreadId]) return
+    if (tokenUsageRefreshInFlightByThreadId.has(normalizedThreadId)) return
+    const lastAttemptAt = tokenUsageRefreshAttemptedAtByThreadId.get(normalizedThreadId) ?? 0
+    if (lastAttemptAt > 0 && Date.now() - lastAttemptAt < THREAD_TOKEN_USAGE_REFRESH_RETRY_MS) return
+
+    tokenUsageRefreshAttemptedAtByThreadId.set(normalizedThreadId, Date.now())
+    const request = getThreadTokenUsage(normalizedThreadId)
+      .then((tokenUsage) => {
+        if (tokenUsage) {
+          setThreadTokenUsage(normalizedThreadId, tokenUsage)
+          tokenUsageRefreshAttemptedAtByThreadId.delete(normalizedThreadId)
+        }
+      })
+      .catch(() => {
+        // Context usage is informational; never block or surface errors during thread switching.
+      })
+      .finally(() => {
+        tokenUsageRefreshInFlightByThreadId.delete(normalizedThreadId)
+      })
+    tokenUsageRefreshInFlightByThreadId.set(normalizedThreadId, request)
   }
 
   function markThreadUnreadByEvent(threadId: string): void {
@@ -4087,30 +4117,38 @@ export function useDesktopState() {
       isLoadingMessages.value = true
     }
 
-    const resumePromise = resumedThreadById.value[threadId] !== true
-      ? ensureThreadResumed(threadId, { signal: options.signal })
-      : null
+    const existingLoad = messageLoadInFlightByThreadId.get(threadId)
+    if (existingLoad) {
+      try {
+        await existingLoad
+      } finally {
+        if (shouldShowLoading && foregroundMessageLoadId === loadId) {
+          isLoadingMessages.value = false
+        }
+      }
+      return
+    }
 
-    try {
+    const runLoad = (async (): Promise<void> => {
       let snapshot: ThreadRuntimeSnapshot
       try {
         snapshot = await getThreadRuntimeSnapshot(threadId, { signal: options.signal })
       } catch (error) {
-        if (!resumePromise || !isThreadMaterializingError(error)) {
+        if (resumedThreadById.value[threadId] === true || !isThreadMaterializingError(error)) {
           throw error
         }
-        await resumePromise
+        await ensureThreadResumed(threadId, { signal: options.signal })
         snapshot = await getThreadRuntimeSnapshot(threadId, { signal: options.signal })
       }
 
-      if (resumePromise) {
-        void resumePromise.catch(() => {})
-      }
       applyRuntimeSnapshotState(threadId, snapshot)
       const nextMessages = snapshot.messages
       const inProgress = snapshot.inProgress
       const activeTurnId = snapshot.activeTurnId
       setThreadTokenUsage(threadId, snapshot.tokenUsage)
+      if (!snapshot.tokenUsage && typeof window !== 'undefined') {
+        window.setTimeout(() => refreshThreadTokenUsageInBackground(threadId), 0)
+      }
       const normalizedPendingRequests = snapshot.pendingServerRequests
         .map((row) => normalizeServerRequest(row))
         .filter((request): request is UiServerRequest => request !== null)
@@ -4174,6 +4212,12 @@ export function useDesktopState() {
       if (!resolvedExecutionState.inProgress && normalizedPendingRequests.length === 0) {
         void processQueuedMessages(threadId)
       }
+    })()
+
+    messageLoadInFlightByThreadId.set(threadId, runLoad)
+
+    try {
+      await runLoad
     } catch (error) {
       if (isAbortLikeError(error)) {
         throw error
@@ -4193,6 +4237,9 @@ export function useDesktopState() {
       setSyncErrorFromUnknown(error)
       throw error
     } finally {
+      if (messageLoadInFlightByThreadId.get(threadId) === runLoad) {
+        messageLoadInFlightByThreadId.delete(threadId)
+      }
       if (shouldShowLoading && foregroundMessageLoadId === loadId) {
         isLoadingMessages.value = false
       }
@@ -4255,6 +4302,9 @@ export function useDesktopState() {
 
     threadSelectionAbortController?.abort()
     threadSelectionAbortController = null
+    if (isPolling.value) {
+      abortCurrentSync()
+    }
 
     if (!normalizedThreadId) {
       isLoadingMessages.value = false
@@ -5400,6 +5450,9 @@ export function useDesktopState() {
     liveReasoningTextByThreadId.value = {}
     liveCommandsByThreadId.value = {}
     threadTokenUsageByThreadId.value = {}
+    tokenUsageRefreshInFlightByThreadId.clear()
+    tokenUsageRefreshAttemptedAtByThreadId.clear()
+    messageLoadInFlightByThreadId.clear()
     turnActivityByThreadId.value = {}
     turnSummaryByThreadId.value = {}
     turnErrorByThreadId.value = {}

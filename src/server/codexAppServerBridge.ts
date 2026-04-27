@@ -259,7 +259,7 @@ const APP_SERVER_RPC_INIT_TIMEOUT_MS = 60_000
 const APP_SERVER_RPC_LIGHT_THREAD_TIMEOUT_MS = 20_000
 const APP_SERVER_RPC_HEAVY_THREAD_TIMEOUT_MS = 60_000
 const APP_SERVER_RPC_SLOW_WARN_MS = 1_800
-const APP_SERVER_RPC_MAX_IN_FLIGHT = 1
+const APP_SERVER_RPC_MAX_IN_FLIGHT = 2
 const APP_SERVER_RPC_QUEUE_WARN_SIZE = 6
 const APP_SERVER_RPC_QUEUE_MAX_SIZE = 60
 const APP_SERVER_RPC_QUEUE_WARN_INTERVAL_MS = 10_000
@@ -895,15 +895,15 @@ function getRpcQueuePriority(method: string, params: unknown): number {
   }
 
   if (method === 'thread/read') {
-    return asRecord(params)?.includeTurns === true ? 2 : 1
+    return 1
   }
 
   if (method === 'thread/list') {
-    return 2
+    return 4
   }
 
   if (method === 'skills/list' || method === 'account/rateLimits/read') {
-    return 3
+    return 5
   }
 
   return 1
@@ -3236,7 +3236,6 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
     const tokenUsage = appServer.getThreadTokenUsage(normalizedThreadId)
       ?? (threadRead ? readThreadTokenUsageFromThreadReadPayload(threadRead) : null)
       ?? (lightThreadRead ? readThreadTokenUsageFromThreadReadPayload(lightThreadRead) : null)
-      ?? await readThreadTokenUsageFromSessionLog(sessionPath)
 
     const updatedAtIso =
       messageState === 'cached'
@@ -3278,6 +3277,25 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
       pendingServerRequests: appServer.listPendingServerRequestsForThread(normalizedThreadId),
       tokenUsage,
     })
+  }
+
+  async function readCachedThreadTokenUsage(threadId: string): Promise<ThreadTokenUsage | null> {
+    const normalizedThreadId = threadId.trim()
+    if (!normalizedThreadId) return null
+
+    const cachedTokenUsage = appServer.getThreadTokenUsage(normalizedThreadId)
+    if (cachedTokenUsage) return cachedTokenUsage
+
+    const cachedThreadRead = cachedThreadReadsByThreadId.get(normalizedThreadId) ?? null
+    const cachedPayloadTokenUsage = cachedThreadRead
+      ? readThreadTokenUsageFromThreadReadPayload(cachedThreadRead.threadRead)
+      : null
+    if (cachedPayloadTokenUsage) return cachedPayloadTokenUsage
+
+    const sessionPath = cachedThreadRead?.sessionPath?.trim() ?? ''
+    if (!sessionPath) return null
+
+    return await readThreadTokenUsageFromSessionLog(sessionPath)
   }
 
   const middleware = async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
@@ -3469,6 +3487,17 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
 
         const snapshot = await readThreadRuntimeSnapshot(threadId)
         setJson(res, 200, { data: snapshot })
+        return
+      }
+
+      if (req.method === 'GET' && url.pathname === '/codex-api/thread-token-usage') {
+        const threadId = (url.searchParams.get('threadId') ?? '').trim()
+        if (!threadId) {
+          setJson(res, 400, { error: 'Missing threadId' })
+          return
+        }
+        const tokenUsage = await readCachedThreadTokenUsage(threadId)
+        setJson(res, 200, { data: { tokenUsage } })
         return
       }
 
