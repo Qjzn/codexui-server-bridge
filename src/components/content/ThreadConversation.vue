@@ -3962,7 +3962,7 @@ onBeforeUnmount(() => {
 }
 
 .conversation-list {
-  @apply h-full min-h-0 list-none m-0 px-2.5 sm:px-5 py-0 overflow-y-auto overflow-x-visible flex flex-col gap-2;
+  @apply h-full min-h-0 list-none m-0 px-2.5 sm:px-5 py-0 overflow-y-auto overflow-x-visible flex flex-col gap-1.5;
   padding-bottom: max(0.875rem, env(safe-area-inset-bottom));
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
@@ -4418,12 +4418,12 @@ onBeforeUnmount(() => {
 }
 
 .message-text-flow {
-  @apply flex flex-col gap-1.5;
-  padding-right: 2.25rem;
+  @apply flex flex-col gap-1;
+  padding-right: 2rem;
 }
 
 .message-text {
-  @apply m-0 text-sm leading-[1.65] whitespace-pre-wrap text-[#2b241d];
+  @apply m-0 text-sm whitespace-pre-wrap text-[#28231d];
   font-family: var(--font-sans-reading);
   font-size: var(--font-size-reading, 15px);
   line-height: var(--line-height-reading);
@@ -4486,30 +4486,30 @@ onBeforeUnmount(() => {
 }
 
 .message-card[data-role='user'] {
-  @apply rounded-[20px] border border-[#ddd3c2] bg-[#efe8dc] px-3 sm:px-3.5 py-2 sm:py-2.5;
-  max-width: min(40rem, 100%);
+  @apply rounded-[18px] border border-[#e0d6c6] bg-[#f0e8dc] px-3 py-2;
+  max-width: min(36rem, 86vw);
   width: fit-content;
   margin-left: auto;
   align-self: flex-end;
 }
 
 .message-card[data-role='assistant'] {
-  @apply rounded-[22px] border border-[#e8dfcf] bg-white px-3.5 py-2.5;
-  max-width: min(66rem, 100%);
-  box-shadow: 0 16px 26px -32px rgba(31, 41, 55, 0.16);
+  @apply rounded-[18px] border border-[#ece4d8] bg-white px-3.5 py-2.5;
+  max-width: min(62rem, calc(100% - 0.5rem));
+  box-shadow: 0 10px 20px -28px rgba(31, 41, 55, 0.14);
 }
 
 .message-card[data-role='system'] {
-  @apply rounded-[18px] border border-[#e8dfcf] bg-[#f7f2e8] px-3.5 py-2.5;
+  @apply rounded-[16px] border border-[#e8dfcf] bg-[#f8f4ec] px-3.5 py-2.5;
   max-width: min(62rem, 100%);
 }
 
 .message-favorite-button {
-  @apply absolute top-2.5 right-2.5 inline-flex h-7 w-7 items-center justify-center rounded-full border border-transparent bg-transparent text-[#b19c7f] transition-[background-color,border-color,color] duration-150 hover:border-[#ddd3c2] hover:bg-[#fff8ee] hover:text-[#7b6b57];
+  @apply absolute top-1.5 right-1.5 inline-flex h-8 w-8 items-center justify-center rounded-full border border-transparent bg-transparent text-[#b7a891] opacity-55 transition-[background-color,border-color,color,opacity] duration-150 hover:border-[#ddd3c2] hover:bg-[#fff8ee] hover:text-[#7b6b57] hover:opacity-100;
 }
 
 .message-favorite-button.is-favorited {
-  @apply border-[#d8c5a6] bg-[#f5ecdd] text-[#8a5b17];
+  @apply border-[#d8c5a6] bg-[#f5ecdd] text-[#8a5b17] opacity-100;
 }
 
 .message-favorite-icon {
@@ -4596,20 +4596,20 @@ onBeforeUnmount(() => {
 
 .conversation-item-actionable:hover .message-action-button,
 .conversation-item-actionable:focus-within .message-action-button {
-  @apply opacity-100;
+  @apply opacity-85;
 }
 
 .message-actions {
-  @apply inline-flex items-center gap-1;
+  @apply inline-flex items-center gap-0.5;
   position: absolute;
   left: 0.5rem;
-  bottom: -0.72rem;
+  bottom: -0.5rem;
   z-index: 10;
   pointer-events: none;
 }
 
 .message-action-button {
-  @apply opacity-0 inline-flex items-center gap-1 self-start rounded-full border border-[#ddd5c7] bg-[#fffdf8] px-2.5 py-1 text-xs text-[#7b7062] transition-[background-color,border-color,color,opacity] duration-150 hover:bg-[#f3ede2] hover:text-[#544a3d] hover:border-[#cdbfa9];
+  @apply opacity-0 inline-flex min-h-8 items-center gap-1 self-start rounded-full border border-transparent bg-[#fffdf8]/88 px-2 py-0.5 text-[11px] text-[#82786b] shadow-sm shadow-[#2d261f]/5 transition-[background-color,border-color,color,opacity] duration-150 hover:border-[#d8cfbf] hover:bg-[#f7f1e5] hover:text-[#544a3d];
   pointer-events: auto;
 }
 
@@ -4637,11 +4637,40 @@ onBeforeUnmount(() => {
 
   .message-card[data-role='assistant'],
   .message-card[data-role='system'] {
-    @apply px-4.5 py-3.5;
+    @apply px-4 py-3;
   }
 
   .message-card[data-role='user'] {
-    @apply px-4 py-3;
+    @apply px-3.5 py-2.5;
+  }
+}
+
+@media (max-width: 767px) {
+  .message-text-flow {
+    padding-right: 1.75rem;
+  }
+
+  .message-text {
+    font-size: 14.5px;
+    line-height: 1.58;
+  }
+
+  .message-card[data-role='assistant'],
+  .message-card[data-role='system'] {
+    @apply px-3 py-2.5;
+  }
+
+  .message-card[data-role='user'] {
+    @apply px-3 py-2;
+    max-width: min(34rem, 84vw);
+  }
+
+  .message-action-button {
+    @apply h-8 w-8 justify-center px-0;
+  }
+
+  .message-action-label {
+    @apply sr-only;
   }
 }
 

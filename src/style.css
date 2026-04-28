@@ -8,9 +8,9 @@
   --font-size-reading: 15px;
   --font-size-meta: 12px;
   --font-size-title: 17px;
-  --line-height-reading: 1.74;
+  --line-height-reading: 1.62;
   --tracking-tight-soft: -0.012em;
-  --tracking-body-soft: -0.006em;
+  --tracking-body-soft: 0;
 }
 
 html,

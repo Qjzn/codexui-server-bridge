@@ -1441,8 +1441,8 @@ watch(
 }
 
 .thread-composer-shell {
-  @apply relative rounded-[24px] border border-[#e3d9c8] bg-[#fffdf8] p-2.5 sm:p-3;
-  box-shadow: 0 18px 34px -36px rgba(31, 41, 55, 0.18);
+  @apply relative rounded-[20px] border border-[#e3d9c8] bg-[#fffdf8] p-2 sm:p-2.5;
+  box-shadow: 0 12px 26px -34px rgba(31, 41, 55, 0.16);
 }
 
 .thread-composer-shell--no-top-radius {
@@ -1589,10 +1589,10 @@ watch(
 }
 
 .thread-composer-input {
-  @apply w-full min-w-0 min-h-10 sm:min-h-11 max-h-40 rounded-xl border-0 bg-transparent px-1 py-2 text-sm text-zinc-900 outline-none transition resize-none overflow-y-auto;
+  @apply w-full min-w-0 min-h-9 sm:min-h-10 max-h-36 rounded-xl border-0 bg-transparent px-1 py-1.5 text-sm text-zinc-900 outline-none transition resize-none overflow-y-auto;
   font-family: var(--font-sans-reading);
   font-size: var(--font-size-reading, 15px);
-  line-height: 1.65;
+  line-height: 1.55;
   letter-spacing: var(--tracking-body-soft);
 }
 
@@ -1605,7 +1605,7 @@ watch(
 }
 
 .thread-composer-controls {
-  @apply relative mt-2 sm:mt-3 flex items-center gap-2 sm:gap-3 overflow-visible;
+  @apply relative mt-1.5 sm:mt-2 flex items-center gap-2 sm:gap-2.5 overflow-visible;
 }
 
 .thread-composer-controls--recording {
@@ -1805,7 +1805,7 @@ watch(
   }
 
   .thread-composer-shell {
-    @apply px-4.5 py-3.5 rounded-[26px];
+    @apply px-4 py-3 rounded-[22px];
   }
 }
 
@@ -1831,15 +1831,16 @@ watch(
   }
 
   .thread-composer-shell {
-    @apply rounded-[22px] px-3 py-2.5;
+    @apply rounded-[20px] px-3 py-2;
   }
 
   .thread-composer-input {
-    @apply min-h-11 py-2.5 text-[15px];
+    @apply min-h-9 py-1.5 text-[14.5px];
+    line-height: 1.5;
   }
 
   .thread-composer-controls {
-    @apply mt-2 items-center gap-2;
+    @apply mt-1.5 items-center gap-2;
     display: grid;
     grid-template-columns: 2.5rem minmax(0, 1fr) auto;
   }
