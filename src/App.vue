@@ -1592,9 +1592,12 @@ const desktopStatusLabel = computed(() => {
   return '不可用'
 })
 const showDesktopStatusPill = computed(() => (
-  isDesktopRefreshRunning.value ||
-  !desktopAppStatus.value.available ||
-  !desktopAppStatus.value.appRunning
+  !isMobileShellAvailable.value &&
+  (
+    isDesktopRefreshRunning.value ||
+    !desktopAppStatus.value.available ||
+    !desktopAppStatus.value.appRunning
+  )
 ))
 const showServiceStatusDetail = computed(() => (
   serviceStatusDetail.value.trim().length > 0 &&

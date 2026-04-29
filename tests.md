@@ -747,3 +747,53 @@ This file tracks manual regression and feature verification steps.
 
 #### Rollback/Cleanup
 - 若需回退，恢复 `src/composables/useDesktopState.ts`、`src/server/codexAppServerBridge.ts`、`src/api/codexGateway.ts` 与 `src/App.vue`。
+
+---
+
+### Feature: Android 锁屏恢复后清理残留执行态
+
+#### Prerequisites
+- Android 端已连接 7420，能进入一个可执行命令的会话。
+- 准备一个会产生命令执行并持续一段时间的任务。
+
+#### Steps
+1. 在 Android 端会话内容页发送任务。
+2. 等待页面出现思考或执行命令卡片。
+3. 切到其他应用或锁屏 2-5 分钟。
+4. 解锁回到 CX Codex。
+5. 等待首轮自动同步完成，不手动点刷新。
+6. 查看会话中是否已经出现新的助手回复。
+7. 如果回复已完成，确认底部不再保留 `思考中` 或 `执行命令` 运行卡片，停止按钮也不继续显示。
+8. 再次切换应用后返回，确认不会重新出现旧的运行卡片。
+
+#### Expected Results
+- Android 回到前台后会立即强制刷新当前会话消息。
+- 如果 runtime snapshot 已过期且 fresh 消息中已有后续助手回复，旧的 `inProgress` 命令不会继续作为强运行信号。
+- 已完成任务不会卡在 `思考中`、`执行命令` 或显示虚假的已运行时长。
+- 真正仍在运行、仍有 fresh runtime/通知/权限请求/队列信号的任务仍保持运行态。
+
+#### Rollback/Cleanup
+- 若需回退，恢复 `src/composables/useDesktopState.ts` 中 runtime stale、残留命令结算和 Android resume 强制刷新逻辑。
+
+---
+
+### Feature: Android 不显示桌面端不可用
+
+#### Prerequisites
+- Android 端已连接 7420。
+- 当前机器的 7420 `/health` 和 `/codex-api/health` 正常。
+
+#### Steps
+1. 打开 Android CX Codex。
+2. 进入任意会话内容页。
+3. 查看标题下方状态胶囊。
+4. 切换会话、锁屏后返回，再次查看状态胶囊。
+5. 在 Web 浏览器打开同一服务，确认非 Android 环境仍可显示官方桌面端刷新状态。
+
+#### Expected Results
+- Android shell 不显示 `桌面端 不可用`。
+- Android 状态优先显示会话运行、同步、连接或未读状态。
+- Web 端桌面刷新能力仍保留，不影响设置里的刷新桌面端入口。
+
+#### Rollback/Cleanup
+- 若需回退，恢复 `src/App.vue` 中 `showDesktopStatusPill` 的 Android shell 过滤逻辑。
