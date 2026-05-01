@@ -26,6 +26,14 @@ Self-hosted OpenAI Codex Web UI and Android client bridge.
 
 ## 产品截图
 
+Android 实机对话：
+
+![Android real conversation](./docs/screenshots/promo-android-chat.jpg)
+
+折叠屏 / 平板 GitHub 热门：
+
+![Foldable GitHub trending](./docs/screenshots/promo-foldable-github-trending.jpg)
+
 桌面工作台：
 
 ![Desktop conversation](./docs/screenshots/chat.png)
