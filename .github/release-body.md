@@ -1,4 +1,4 @@
-# codexui-server-bridge 2.1.15
+# codexui-server-bridge 2.1.16
 
 Self-hosted OpenAI Codex Web UI and Android client bridge.
 
@@ -6,25 +6,26 @@ Self-hosted OpenAI Codex Web UI and Android client bridge.
 
 ## 这版适合谁升级
 
-- Android App 首次启动、输入连接地址或切后台恢复时不稳定的人。
-- 遇到任务已经完成但页面仍显示“思考中”的人。
-- 希望默认配置不包含任何本机地址、公网地址或私人密钥的人。
+- Android 手机端侧边栏、会话列表、搜索或重命名操作不顺的人。
+- 折叠屏设备上点击搜索框后侧边栏自动收起的人。
+- 希望移动端会话记录、置顶状态和桌面端 Codex 更一致的人。
 - 想通过 GitHub Release 获取最新版 Web 包和 Android APK 的人。
 
 ## 本次版本重点
 
-- Android 启动更稳：
-  - 未配置连接地址时先完成原生 Activity 初始化，再显示原生连接页。
-  - APK 默认不内置私人服务地址，首次输入后保存在设备本地。
-  - 已保存密钥可用于认证失效后的无感重登。
-- 同步状态更可靠：
-  - 前台恢复会重新校准线程状态、最新消息、执行队列和思考态。
-  - 已完成任务不应继续显示停止按钮或“思考中”卡片。
-  - 长会话默认优先显示最新内容，上滑再补历史。
-- 公开文档更适合传播：
-  - README 改为产品化介绍，突出 Codex Web UI、Android、self-hosted、Windows 和 remote access。
-  - 旧截图已替换为脱敏浏览器截图。
-  - Release、GitHub 包装文案和版本命名统一到 `2.1.x`。
+- Android 侧边栏更稳：
+  - 重命名、删除、会话菜单等弹层阻止点击穿透，减少弹窗闪现和侧栏异常关闭。
+  - 折叠屏双栏模式保持侧边栏固定，不再因搜索框聚焦或键盘变化自动收起。
+  - 侧边栏支持拖拽调整宽度，宽度本机保存。
+- 会话记录更接近桌面端 Codex：
+  - 分页加载完整会话记录，减少 Android 缺少历史线程的问题。
+  - 恢复线程目录模块，并保留展开/收起。
+  - 置顶状态从服务端刷新同步，触屏端也可直接置顶/取消置顶。
+- 手机端阅读更紧凑：
+  - 降低字体、卡片、列表和顶部区域占用。
+  - 会话搜索仅匹配标题，列表只展示单行标题，不展示正文预览。
+- 连接地址体验更清晰：
+  - 服务地址不可访问时提示此前地址失败，并引导重新输入新地址。
 
 ## 快速安装
 
@@ -34,7 +35,7 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; irm https://raw.githubusercont
 
 ## Android APK
 
-如果本 Release 资产包含 `cx-codex-android-2.1.15.apk`，可下载后安装。
+如果本 Release 资产包含 `cx-codex-android-2.1.16.apk`，可下载后安装。
 
 首次启动需要输入你自己的 Codex Web 服务地址；项目默认不内置任何私人地址。密钥登录成功后会保存在设备本地，用于后续无感重登。
 
