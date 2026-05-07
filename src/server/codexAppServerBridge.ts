@@ -603,7 +603,10 @@ function normalizePlanModeTurnStartParams(params: unknown, options: { includeNat
   delete next.collaborationMode
   if (options.includeNativeMode !== false) {
     next.mode = 'plan'
-  } else if (next.mode === 'plan') {
+    return next
+  }
+
+  if (next.mode === 'plan') {
     delete next.mode
   }
 

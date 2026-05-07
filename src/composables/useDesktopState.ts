@@ -1569,6 +1569,12 @@ export function useDesktopState() {
     saveSelectedCollaborationMode(nextMode)
   }
 
+  function consumePlanModeAfterSubmit(mode: CollaborationMode): void {
+    if (mode !== 'plan') return
+    if (selectedCollaborationMode.value !== 'plan') return
+    setSelectedCollaborationMode('execute')
+  }
+
   async function updateSelectedSpeedMode(mode: SpeedMode): Promise<void> {
     const nextMode: SpeedMode = mode === 'fast' ? 'fast' : 'standard'
     if (isUpdatingSpeedMode.value || selectedSpeedMode.value === nextMode) {
@@ -4663,6 +4669,7 @@ export function useDesktopState() {
         : nextQueue.length
       nextQueue.splice(insertIndex, 0, { id, text: nextText, imageUrls, skills, fileAttachments, collaborationMode })
       setQueuedMessagesForThread(threadId, nextQueue)
+      consumePlanModeAfterSubmit(collaborationMode)
       return
     }
 
@@ -4671,6 +4678,7 @@ export function useDesktopState() {
       markActiveSyncBoost()
       try {
         await startTurnForThread(threadId, nextText, imageUrls, skills, fileAttachments, collaborationMode)
+        consumePlanModeAfterSubmit(collaborationMode)
       } catch (unknownError) {
         removeOptimisticUserMessage(threadId, optimisticMessageId)
         const errorMessage = unknownError instanceof Error ? unknownError.message : 'Unknown application error'
@@ -4697,6 +4705,7 @@ export function useDesktopState() {
 
     try {
       await startTurnForThread(threadId, nextText, imageUrls, skills, fileAttachments, collaborationMode)
+      consumePlanModeAfterSubmit(collaborationMode)
     } catch (unknownError) {
       shouldAutoScrollOnNextAgentEvent = false
       removeOptimisticUserMessage(threadId, optimisticMessageId)
@@ -4777,6 +4786,7 @@ export function useDesktopState() {
         .finally(() => {
           isSendingMessage.value = false
         })
+      consumePlanModeAfterSubmit(collaborationMode)
       void requestThreadTitleGeneration(capturedThreadId, capturedPrompt, capturedCwd)
       return threadId
     } catch (unknownError) {

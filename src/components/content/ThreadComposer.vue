@@ -228,6 +228,13 @@
               计划
             </button>
           </div>
+          <span
+            v-if="collaborationModeHintText"
+            class="thread-composer-mode-hint"
+            :class="{ 'is-plan': selectedCollaborationMode === 'plan' }"
+          >
+            {{ collaborationModeHintText }}
+          </span>
           <template v-if="isCompactViewport">
             <ComposerSearchDropdown
               class="thread-composer-control thread-composer-control--skills"
@@ -341,8 +348,8 @@
             class="thread-composer-submit"
             :class="{ 'thread-composer-submit--queue': isTurnInProgress }"
             type="button"
-            :aria-label="isTurnInProgress ? '加入消息队列' : '发送消息'"
-            :title="isTurnInProgress ? '加入消息队列，等待当前任务结束后按顺序执行' : '发送'"
+            :aria-label="submitActionLabel"
+            :title="submitActionLabel"
             :disabled="!canSubmit"
             @click="onSubmit(resolveSubmitMode())"
           >
@@ -658,6 +665,22 @@ const speedModeDescription = computed(() => {
   return props.selectedSpeedMode === 'fast'
     ? '约 1.5 倍速度，额度消耗按 2 倍计算'
     : '默认速度，按正常额度消耗'
+})
+const collaborationModeHintText = computed(() => {
+  if (props.isTurnInProgress) return ''
+  return props.selectedCollaborationMode === 'plan'
+    ? '只制定计划，发送后自动回到执行'
+    : ''
+})
+const submitActionLabel = computed(() => {
+  if (props.isTurnInProgress) {
+    return props.selectedCollaborationMode === 'plan'
+      ? '加入计划消息队列'
+      : '加入消息队列，等待当前任务结束后按顺序执行'
+  }
+  return props.selectedCollaborationMode === 'plan'
+    ? '生成计划，不执行修改'
+    : '发送'
 })
 const isDictationRecording = computed(() => dictationState.value === 'recording')
 const shouldShowDictationButton = computed(() => props.showDictationButton !== false && isDictationSupported.value)
@@ -1743,6 +1766,14 @@ watch(
   @apply bg-[#0f766e] text-white shadow-sm;
 }
 
+.thread-composer-mode-hint {
+  @apply min-w-0 truncate text-[12px] font-medium text-[#8a8173];
+}
+
+.thread-composer-mode-hint.is-plan {
+  @apply text-[#0f766e];
+}
+
 .thread-composer-control :deep(.composer-dropdown-value) {
   @apply truncate;
 }
@@ -1902,6 +1933,10 @@ watch(
 
   .thread-composer-mode-toggle button {
     @apply px-2 text-[12px];
+  }
+
+  .thread-composer-mode-hint {
+    @apply hidden;
   }
 
   .thread-composer-control {

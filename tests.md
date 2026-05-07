@@ -797,3 +797,29 @@ This file tracks manual regression and feature verification steps.
 
 #### Rollback/Cleanup
 - 若需回退，恢复 `src/App.vue` 中 `showDesktopStatusPill` 的 Android shell 过滤逻辑。
+
+---
+
+### Feature: 计划模式接近桌面端行为
+
+#### Prerequisites
+- `7420` 服务运行中，当前构建已包含计划模式优化。
+- 使用移动宽度或 Android 端打开 CX-Codex。
+
+#### Steps
+1. 打开新会话或任意已有会话。
+2. 点击输入区的 `计划`。
+3. 输入一个只需要制定计划的任务并发送。
+4. 观察回复内容是否只给计划，不执行命令、不读写文件。
+5. 等待回复完成后查看输入区模式。
+6. 打开 `/codex-api/health`，确认 `activePlanModeTurnCount` 回到 `0`。
+7. 再输入 `开始执行`，确认默认已处于 `执行`，不会继续被计划模式拦截。
+
+#### Expected Results
+- 前端发送计划时使用原生 `mode: plan`，不再把整段 Plan Mode 规则注入用户消息。
+- 如果后端不支持原生 `mode: plan`，才降级注入只读计划提示。
+- 计划消息发送后输入区自动切回 `执行`。
+- 计划完成后不残留停止按钮、思考中状态或 `activePlanModeTurnCount`。
+
+#### Rollback/Cleanup
+- 若需回退，恢复 `src/server/codexAppServerBridge.ts`、`src/composables/useDesktopState.ts` 和 `src/components/content/ThreadComposer.vue` 的计划模式相关改动。
