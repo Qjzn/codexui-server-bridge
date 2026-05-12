@@ -765,11 +765,17 @@ This file tracks manual regression and feature verification steps.
 6. 查看会话中是否已经出现新的助手回复。
 7. 如果回复已完成，确认底部不再保留 `思考中` 或 `执行命令` 运行卡片，停止按钮也不继续显示。
 8. 再次切换应用后返回，确认不会重新出现旧的运行卡片。
+9. 如果旧版本状态下仍显示停止按钮，点击停止，确认前端会刷新并清理已结束任务的残留运行态。
+10. 在任务完成回复已经显示后，如果底部仍残留旧命令卡片，等待一次自动刷新或手动点刷新，确认旧命令卡片会消失。
+11. 在会话顶部点击刷新按钮，确认按钮等待真实刷新完成后才恢复可点，且刷新后不再显示残留 `思考中`。
 
 #### Expected Results
 - Android 回到前台后会立即强制刷新当前会话消息。
 - 如果 runtime snapshot 已过期且 fresh 消息中已有后续助手回复，旧的 `inProgress` 命令不会继续作为强运行信号。
 - 已完成任务不会卡在 `思考中`、`执行命令` 或显示虚假的已运行时长。
+- 停止已结束任务时不会继续保留无效的 `思考中` 卡片或错误停止状态。
+- 即使 App 后台期间漏掉 `turn/completed` 通知，残留 live 命令也不会追加在完成回复后继续显示。
+- 会话顶部刷新按钮执行强恢复刷新：中断旧同步、重拉 runtime snapshot/消息/pending requests/thread list，并收敛本地残留运行态。
 - 真正仍在运行、仍有 fresh runtime/通知/权限请求/队列信号的任务仍保持运行态。
 
 #### Rollback/Cleanup
@@ -823,3 +829,57 @@ This file tracks manual regression and feature verification steps.
 
 #### Rollback/Cleanup
 - 若需回退，恢复 `src/server/codexAppServerBridge.ts`、`src/composables/useDesktopState.ts` 和 `src/components/content/ThreadComposer.vue` 的计划模式相关改动。
+
+---
+
+### Feature: 会话列表排除归档线程，搜索仍覆盖历史线程
+
+#### Prerequisites
+- `7420` 服务运行中，当前构建已包含会话列表与搜索范围修复。
+- 本机 Codex 存在活跃线程与归档线程。
+
+#### Steps
+1. 打开 7420 侧边栏会话列表。
+2. 与桌面端主列表对比，确认已归档会话不会出现在普通列表中。
+3. 在 7420 中删除/归档一个临时活跃会话并刷新列表。
+4. 搜索一个只存在于历史/归档线程标题中的关键词。
+5. 调用 `/codex-api/thread-search`，确认 `indexedThreadCount` 仍覆盖历史线程。
+
+#### Expected Results
+- 7420 普通会话列表只使用 active 线程，删除/归档后不会因为 archived 回流再次出现。
+- 线程搜索索引仍可包含 active 与 archived 线程。
+- 搜索仍只匹配会话标题，不用正文内容污染结果。
+- 若桌面端显示的是 prompt history 或 ambient suggestion，而不是实际线程，7420 不会伪造成可点击线程。
+
+#### Rollback/Cleanup
+- 若需回退，恢复 `src/api/codexGateway.ts` 和 `src/server/codexAppServerBridge.ts` 的归档线程读取逻辑。
+
+---
+
+### Feature: 思考中状态稳定收敛
+
+#### Prerequisites
+- `7420` 服务运行中，当前构建已包含 runtime 收敛修复。
+- `/codex-api/health` 中 `pendingRpcCount`、`queuedRpcCount`、`pendingServerRequestCount` 为 0 时再重启验证。
+
+#### Steps
+1. 打开任意会话，发送一个会产生短命令或短回复的任务。
+2. 任务执行期间保持页面打开，确认思考/命令卡片正常出现。
+3. 等待任务完成，确认最终回复出现后思考/命令卡片自动消失。
+4. 再发送一个任务，任务执行期间切换应用或锁屏 2 分钟后返回。
+5. 等待自动同步完成，确认没有旧的 `思考中` 残留。
+6. 搜索历史线程标题，确认搜索不会造成大量 `thread/read` 慢调用。
+7. 打开 `/codex-api/health`，确认没有因为普通 `thread/read` 留下 `queued` 执行态。
+
+#### Expected Results
+- 普通 `thread/read` 不会被记录成执行队列状态。
+- 过期运行态在没有 fresh `thread/read` 佐证时降级为 `sync_degraded`，不会继续展示为思考中。
+- 搜索索引只用 `session_index.jsonl` 的标题补齐历史记录，不逐个读取历史线程。
+- 计划模式完成、失败或中断后，`/codex-api/health` 中 `activePlanModeTurnCount` 回到 `0`。
+- 安卓前台恢复会按通知 replay、runtime snapshot、消息详情的顺序强制收敛当前会话。
+- 会话顶部刷新可清理已结束任务留下的旧 `liveOverlay`、`activeTurnId`、运行中命令卡片和停止按钮。
+- 新启动日志不再输出明文 `Password:` 值，敏感 token/query 参数会被脱敏。
+- 真正仍在执行且 fresh `thread/read` 仍显示 inProgress 的任务继续显示运行态。
+
+#### Rollback/Cleanup
+- 若需回退，恢复 `src/server/codexAppServerBridge.ts`、`src/composables/useDesktopState.ts` 和启动脚本的稳定性收敛改动。

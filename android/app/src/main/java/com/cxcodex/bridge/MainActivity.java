@@ -1,17 +1,23 @@
 package com.cxcodex.bridge;
 
+import android.app.DownloadManager;
 import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.inputmethod.InputMethodManager;
 import android.content.Context;
+import android.webkit.CookieManager;
+import android.webkit.URLUtil;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 import com.getcapacitor.CapConfig;
 import com.getcapacitor.BridgeActivity;
 
@@ -25,6 +31,43 @@ public class MainActivity extends BridgeActivity {
 
         if (MobileShellConfig.getStoredServerUrl(this).isEmpty()) {
             showServerSetupScreen();
+        } else if (bridge != null && bridge.getWebView() != null) {
+            bridge.getWebView().setDownloadListener(this::onWebViewDownloadRequested);
+        }
+    }
+
+    private void onWebViewDownloadRequested(
+        String url,
+        String userAgent,
+        String contentDisposition,
+        String mimetype,
+        long contentLength
+    ) {
+        try {
+            DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
+            String fileName = URLUtil.guessFileName(url, contentDisposition, mimetype);
+            String cookies = CookieManager.getInstance().getCookie(url);
+            if (cookies != null && !cookies.isEmpty()) {
+                request.addRequestHeader("Cookie", cookies);
+            }
+            if (userAgent != null && !userAgent.isEmpty()) {
+                request.addRequestHeader("User-Agent", userAgent);
+            }
+            request.setTitle(fileName);
+            request.setDescription("正在下载文件");
+            request.setMimeType(mimetype);
+            request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+            request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
+
+            DownloadManager manager = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+            if (manager == null) {
+                Toast.makeText(this, "系统下载服务不可用", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            manager.enqueue(request);
+            Toast.makeText(this, "已开始下载：" + fileName, Toast.LENGTH_SHORT).show();
+        } catch (Exception exception) {
+            Toast.makeText(this, "下载失败：" + exception.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 

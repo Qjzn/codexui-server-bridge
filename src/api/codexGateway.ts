@@ -464,13 +464,16 @@ function normalizeThreadTokenUsage(value: unknown): UiThreadTokenUsage | null {
   }
 }
 
-async function getThreadGroupsV2(options: RpcCallOptions = {}): Promise<UiProjectGroup[]> {
+async function listThreadsByArchiveState(
+  archived: boolean,
+  options: RpcCallOptions = {},
+): Promise<ThreadListResponse['data']> {
   const data: ThreadListResponse['data'] = []
   let cursor: string | null = null
 
   do {
     const payload: ThreadListResponse = await callRpc<ThreadListResponse>('thread/list', {
-      archived: false,
+      archived,
       limit: 100,
       sortKey: 'updated_at',
       cursor,
@@ -481,6 +484,11 @@ async function getThreadGroupsV2(options: RpcCallOptions = {}): Promise<UiProjec
       : null
   } while (cursor)
 
+  return data
+}
+
+async function getThreadGroupsV2(options: RpcCallOptions = {}): Promise<UiProjectGroup[]> {
+  const data = await listThreadsByArchiveState(false, options)
   return normalizeThreadGroupsV2({ data, nextCursor: null })
 }
 

@@ -274,6 +274,8 @@ const APP_SERVER_RPC_DIAGNOSTIC_LIMIT = 20
 const APP_SERVER_THREAD_LIST_FRESH_CACHE_TTL_MS = 3 * 60_000
 const APP_SERVER_THREAD_LIST_STALE_CACHE_TTL_MS = 20 * 60_000
 const APP_SERVER_THREAD_LIST_BACKGROUND_REFRESH_MIN_INTERVAL_MS = 30_000
+const SUPPLEMENTAL_THREAD_SUMMARY_CACHE_TTL_MS = 5 * 60_000
+const SUPPLEMENTAL_THREAD_SUMMARY_MAX_READS = 20
 const RUNTIME_SNAPSHOT_STALE_MS = 90_000
 const BRIDGE_HEARTBEAT_METHOD = 'bridge/heartbeat'
 const PLAN_MODE_PROMPT_PREFIX = `# Codex Plan Mode
@@ -575,8 +577,17 @@ function readTurnIdFromPayload(payload: unknown): string {
   if (!root) return ''
   const direct = readStringByAliases(root, 'turnId', 'turn_id', 'activeTurnId')
   if (direct) return direct
+  const request = asRecord(root.request)
+  const requestTurnId = readStringByAliases(request, 'turnId', 'turn_id', 'activeTurnId')
+  if (requestTurnId) return requestTurnId
+  const params = asRecord(root.params)
+  const paramsTurnId = readStringByAliases(params, 'turnId', 'turn_id', 'activeTurnId')
+  if (paramsTurnId) return paramsTurnId
   const turn = asRecord(root.turn)
-  return readStringByAliases(turn, 'id', 'turnId', 'turn_id')
+  const turnId = readStringByAliases(turn, 'id', 'turnId', 'turn_id')
+  if (turnId) return turnId
+  const item = asRecord(root.item)
+  return readStringByAliases(item, 'turnId', 'turn_id')
 }
 
 function readCollaborationModeFromPayload(payload: unknown): CollaborationMode {
@@ -884,11 +895,18 @@ class RuntimeStateStore {
   snapshot(threadId: string, overlay: RuntimeSnapshotOverlay = {}): ThreadRuntimeSnapshot {
     const state = this.getMutable(threadId)
     const pendingServerRequests = overlay.pendingServerRequests ?? []
-    const executionState = pendingServerRequests.length > 0
+    const overlayThreadReadInProgress = overlay.threadRead
+      ? readThreadInProgressFromThreadReadPayload(overlay.threadRead)
+      : false
+    const rawExecutionState = pendingServerRequests.length > 0
       ? 'waiting_permission'
       : state.executionState
     const lastAt = state.lastEventAtIso ? Date.parse(state.lastEventAtIso) : 0
-    const stale = lastAt > 0 && isRuntimeActiveState(executionState) && Date.now() - lastAt > RUNTIME_SNAPSHOT_STALE_MS
+    const stale = lastAt > 0 && isRuntimeActiveState(rawExecutionState) && Date.now() - lastAt > RUNTIME_SNAPSHOT_STALE_MS
+    const executionState =
+      stale && pendingServerRequests.length === 0 && !overlayThreadReadInProgress
+        ? 'sync_degraded'
+        : rawExecutionState
 
     return {
       threadId: state.threadId,
@@ -999,14 +1017,46 @@ function getRpcQueuePriority(method: string, params: unknown): number {
   return 1
 }
 
+function redactSensitiveLogString(value: string): string {
+  return value
+    .replace(
+      /(["'])([^"']*(?:password|authorization|cookie|token|secret|api[-_]?key|auth)[^"']*)\1\s*:\s*(["'])([^"']*)\3/giu,
+      '$1$2$1:$3[REDACTED]$3',
+    )
+    .replace(/(password\s*[:=]\s*)([^\s"'`,;]+)/giu, '$1[REDACTED]')
+    .replace(/(authorization\s*[:=]\s*bearer\s+)([^\s"'`,;]+)/giu, '$1[REDACTED]')
+    .replace(/((?:access_token|auth_token|token|api_key|apikey|secret)=)([^&\s"'`,;]+)/giu, '$1[REDACTED]')
+}
+
+function sanitizeBridgeLogValue(value: unknown, depth = 0): unknown {
+  if (depth > 4) return '[DEPTH_LIMIT]'
+  if (typeof value === 'string') return redactSensitiveLogString(value)
+  if (typeof value !== 'object' || value === null) return value
+  if (Array.isArray(value)) {
+    return value.slice(0, 50).map((item) => sanitizeBridgeLogValue(item, depth + 1))
+  }
+
+  const record = value as Record<string, unknown>
+  const sanitized: Record<string, unknown> = {}
+  for (const [key, entryValue] of Object.entries(record)) {
+    if (/password|authorization|cookie|token|secret|api[-_]?key|auth/i.test(key)) {
+      sanitized[key] = '[REDACTED]'
+      continue
+    }
+    sanitized[key] = sanitizeBridgeLogValue(entryValue, depth + 1)
+  }
+  return sanitized
+}
+
 function writeBridgeLog(level: 'warn' | 'error', message: string, details: Record<string, unknown> = {}): void {
   try {
+    const sanitizedDetails = sanitizeBridgeLogValue(details)
     process.stderr.write(`${JSON.stringify({
       atIso: new Date().toISOString(),
       scope: 'codex-bridge',
       level,
-      message,
-      ...details,
+      message: redactSensitiveLogString(message),
+      ...(asRecord(sanitizedDetails) ?? {}),
     })}\n`)
   } catch {
     // Logging must never interfere with bridge traffic.
@@ -1833,6 +1883,90 @@ async function readMergedThreadTitleCache(): Promise<ThreadTitleCache> {
   return mergeThreadTitleCaches(persistedCache, sessionIndexCache)
 }
 
+async function readDesktopPinnedThreadIds(): Promise<string[]> {
+  try {
+    const raw = await readFile(getCodexGlobalStatePath(), 'utf8')
+    const payload = asRecord(JSON.parse(raw)) ?? {}
+    return normalizeStringArray(payload['pinned-thread-ids'])
+  } catch {
+    return []
+  }
+}
+
+async function readMergedPinnedThreadIds(): Promise<string[]> {
+  const [webPinnedIds, desktopPinnedIds] = await Promise.all([
+    readPinnedThreadIds(),
+    readDesktopPinnedThreadIds(),
+  ])
+  return normalizeStringArray([...webPinnedIds, ...desktopPinnedIds])
+}
+
+const supplementalThreadSummaryCacheById = new Map<string, { value: unknown | null; cachedAtMs: number; failed?: boolean }>()
+
+async function loadThreadSummariesById(
+  appServer: AppServerProcess,
+  threadIds: string[],
+  excludedThreadIds: Set<string>,
+): Promise<unknown[]> {
+  const summaries: unknown[] = []
+  const seen = new Set<string>(excludedThreadIds)
+  let uncachedReadCount = 0
+
+  for (const rawThreadId of threadIds) {
+    const threadId = rawThreadId.trim()
+    if (!threadId || seen.has(threadId)) continue
+    seen.add(threadId)
+
+    const cached = supplementalThreadSummaryCacheById.get(threadId)
+    if (cached && Date.now() - cached.cachedAtMs <= SUPPLEMENTAL_THREAD_SUMMARY_CACHE_TTL_MS) {
+      if (!cached.failed && cached.value) {
+        summaries.push(cached.value)
+      }
+      continue
+    }
+
+    if (uncachedReadCount >= SUPPLEMENTAL_THREAD_SUMMARY_MAX_READS) continue
+    uncachedReadCount += 1
+
+    try {
+      const response = asRecord(await appServer.rpc('thread/read', {
+        threadId,
+        includeTurns: false,
+      }))
+      const thread = asRecord(response?.thread)
+      if (thread?.id === threadId) {
+        supplementalThreadSummaryCacheById.set(threadId, {
+          value: thread,
+          cachedAtMs: Date.now(),
+        })
+        summaries.push(thread)
+      } else {
+        supplementalThreadSummaryCacheById.set(threadId, {
+          value: null,
+          cachedAtMs: Date.now(),
+          failed: true,
+        })
+      }
+    } catch {
+      supplementalThreadSummaryCacheById.set(threadId, {
+        value: null,
+        cachedAtMs: Date.now(),
+        failed: true,
+      })
+      // Keep desktop/index parity best-effort; a missing historical thread must not break the list.
+    }
+  }
+
+  if (supplementalThreadSummaryCacheById.size > 100) {
+    const overflow = supplementalThreadSummaryCacheById.size - 100
+    for (const key of Array.from(supplementalThreadSummaryCacheById.keys()).slice(0, overflow)) {
+      supplementalThreadSummaryCacheById.delete(key)
+    }
+  }
+
+  return summaries
+}
+
 async function readWorkspaceRootsState(): Promise<WorkspaceRootsState> {
   const statePath = getCodexGlobalStatePath()
   let payload: Record<string, unknown> = {}
@@ -2535,7 +2669,7 @@ class AppServerProcess {
       notification.method === 'error' ||
       notification.method.endsWith('/failed')
     ) {
-      this.clearPlanModeTurn(readThreadIdFromPayload(notification.params), readTurnIdFromPayload(notification.params))
+      this.clearPlanModeTurnByPayload(notification.params)
     }
 
     if (notification.method !== 'thread/tokenUsage/updated') return
@@ -2595,6 +2729,21 @@ class AppServerProcess {
     const normalizedTurnId = turnId.trim()
     if (normalizedTurnId && current.turnId && current.turnId !== normalizedTurnId) return
     this.planModeTurnsByThreadId.delete(normalizedThreadId)
+  }
+
+  clearPlanModeTurnByPayload(payload: unknown): void {
+    const threadId = readThreadIdFromPayload(payload)
+    const turnId = readTurnIdFromPayload(payload)
+    if (threadId) {
+      this.clearPlanModeTurn(threadId, turnId)
+      return
+    }
+    if (!turnId) return
+    for (const [activeThreadId, activePlan] of this.planModeTurnsByThreadId.entries()) {
+      if (activePlan.turnId && activePlan.turnId === turnId) {
+        this.planModeTurnsByThreadId.delete(activeThreadId)
+      }
+    }
   }
 
   getActivePlanModeTurnCount(): number {
@@ -3163,37 +3312,80 @@ function getSharedBridgeState(): SharedBridgeState {
 }
 
 async function loadAllThreadsForSearch(appServer: AppServerProcess): Promise<ThreadSearchDocument[]> {
-  const threads: Array<{ id: string; title: string; preview: string }> = []
-  let cursor: string | null = null
+  const threadsById = new Map<string, { id: string; title: string; preview: string }>()
 
-  do {
-    const response = asRecord(await appServer.rpc('thread/list', {
-      archived: false,
-      limit: 100,
-      sortKey: 'updated_at',
-      cursor,
-    }))
-    const data = Array.isArray(response?.data) ? response.data : []
-    for (const row of data) {
-      const record = asRecord(row)
-      const id = typeof record?.id === 'string' ? record.id : ''
-      if (!id) continue
-      const title = typeof record?.name === 'string' && record.name.trim().length > 0
-        ? record.name.trim()
-        : (typeof record?.preview === 'string' && record.preview.trim().length > 0 ? record.preview.trim() : 'Untitled thread')
-      const preview = typeof record?.preview === 'string' ? record.preview : ''
-      threads.push({ id, title, preview })
-    }
-    cursor = typeof response?.nextCursor === 'string' && response.nextCursor.length > 0 ? response.nextCursor : null
-  } while (cursor)
+  for (const archived of [false, true]) {
+    let cursor: string | null = null
 
-  return threads.map((thread) => ({
+    do {
+      const response = asRecord(await appServer.rpc('thread/list', {
+        archived,
+        limit: 100,
+        sortKey: 'updated_at',
+        cursor,
+      }))
+      const data = Array.isArray(response?.data) ? response.data : []
+      for (const row of data) {
+        const record = asRecord(row)
+        const id = typeof record?.id === 'string' ? record.id : ''
+        if (!id || threadsById.has(id)) continue
+        const title = typeof record?.name === 'string' && record.name.trim().length > 0
+          ? record.name.trim()
+          : (typeof record?.preview === 'string' && record.preview.trim().length > 0 ? record.preview.trim() : 'Untitled thread')
+        const preview = typeof record?.preview === 'string' ? record.preview : ''
+        threadsById.set(id, { id, title, preview })
+      }
+      cursor = typeof response?.nextCursor === 'string' && response.nextCursor.length > 0 ? response.nextCursor : null
+    } while (cursor)
+  }
+
+  const sessionIndexCache = await readThreadTitlesFromSessionIndex()
+  for (const id of sessionIndexCache.order) {
+    if (threadsById.has(id)) continue
+    const title = sessionIndexCache.titles[id]?.trim() ?? ''
+    if (!title) continue
+    threadsById.set(id, { id, title, preview: '' })
+  }
+
+  return Array.from(threadsById.values()).map((thread) => ({
     id: thread.id,
     title: thread.title,
     preview: thread.preview,
     messageText: '',
     searchableText: thread.title,
   }))
+}
+
+async function augmentThreadListRpcResult(
+  appServer: AppServerProcess,
+  params: unknown,
+  result: unknown,
+): Promise<unknown> {
+  const paramsRecord = asRecord(params)
+  if (paramsRecord?.archived !== true) return result
+  if (typeof paramsRecord?.cursor === 'string' && paramsRecord.cursor.length > 0) return result
+
+  const resultRecord = asRecord(result)
+  const data = Array.isArray(resultRecord?.data) ? resultRecord.data : null
+  if (!data) return result
+
+  const pinnedThreadIds = await readMergedPinnedThreadIds()
+  if (pinnedThreadIds.length === 0) return result
+
+  const existingThreadIds = new Set<string>()
+  for (const row of data) {
+    const record = asRecord(row)
+    const id = typeof record?.id === 'string' ? record.id : ''
+    if (id) existingThreadIds.add(id)
+  }
+
+  const supplementalThreads = await loadThreadSummariesById(appServer, pinnedThreadIds, existingThreadIds)
+  if (supplementalThreads.length === 0) return result
+
+  return {
+    ...resultRecord,
+    data: [...data, ...supplementalThreads],
+  }
 }
 
 async function buildThreadSearchIndex(appServer: AppServerProcess): Promise<ThreadSearchIndex> {
@@ -3478,7 +3670,7 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
       }
 
       if (req.method === 'GET' && url.pathname === '/codex-api/pinned-threads') {
-        const pinnedThreadIds = await readPinnedThreadIds()
+        const pinnedThreadIds = await readMergedPinnedThreadIds()
         setJson(res, 200, { data: pinnedThreadIds })
         return
       }
@@ -3520,7 +3712,7 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
           }
         } else if (body.method === 'turn/interrupt' && rpcThreadId) {
           runtimeStateStore.markStopping(rpcThreadId)
-        } else if ((body.method === 'thread/resume' || body.method === 'thread/read') && rpcThreadId) {
+        } else if (body.method === 'thread/resume' && rpcThreadId) {
           runtimeStateStore.markQueued(rpcThreadId)
         }
 
@@ -3553,7 +3745,10 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
           }
           throw error
         }
-        const result = trimThreadTurnsInRpcResult(body.method, rpcResult)
+        const enrichedRpcResult = body.method === 'thread/list'
+          ? await augmentThreadListRpcResult(appServer, rpcParams, rpcResult)
+          : rpcResult
+        const result = trimThreadTurnsInRpcResult(body.method, enrichedRpcResult)
         setJson(res, 200, { result })
         return
       }

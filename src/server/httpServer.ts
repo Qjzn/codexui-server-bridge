@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url'
-import { dirname, extname, isAbsolute, join } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join } from 'node:path'
 import type { Server as HttpServer, IncomingMessage } from 'node:http'
 import { existsSync } from 'node:fs'
 import { writeFile, stat } from 'node:fs/promises'
@@ -34,6 +34,19 @@ const IMAGE_CONTENT_TYPES: Record<string, string> = {
   '.svg': 'image/svg+xml',
   '.webp': 'image/webp',
 }
+
+const DOWNLOAD_ONLY_EXTENSIONS = new Set([
+  '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf',
+  '.odt', '.ods', '.odp', '.rtf',
+  '.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz', '.iso',
+  '.exe', '.msi', '.dmg', '.apk',
+  '.bin', '.dat', '.db', '.sqlite', '.sqlite3',
+  '.parquet', '.feather',
+  '.ttf', '.otf', '.woff', '.woff2',
+  '.psd', '.ai', '.sketch', '.fig',
+  '.onnx', '.pt', '.pth', '.safetensors',
+  '.dll', '.so', '.dylib',
+])
 
 function renderFrontendMissingHtml(message: string, details?: string[]): string {
   const lines = details && details.length > 0 ? `<pre>${details.join('\n')}</pre>` : ''
@@ -71,6 +84,23 @@ function readWildcardPathParam(value: unknown): string {
   if (typeof value === 'string') return value
   if (Array.isArray(value)) return value.join('/')
   return ''
+}
+
+function encodeContentDispositionFileName(fileName: string): string {
+  const fallback = fileName.replace(/[^\x20-\x7E]/gu, '_').replace(/["\\]/gu, '_') || 'download'
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(fileName)}`
+}
+
+function shouldDownloadLocalFile(localPath: string): boolean {
+  return DOWNLOAD_ONLY_EXTENSIONS.has(extname(localPath).toLowerCase())
+}
+
+function setLocalFileDisposition(res: express.Response, localPath: string): void {
+  if (shouldDownloadLocalFile(localPath)) {
+    res.setHeader('Content-Disposition', encodeContentDispositionFileName(basename(localPath) || 'download'))
+    return
+  }
+  res.setHeader('Content-Disposition', 'inline')
 }
 
 export function createServer(options: ServerOptions = {}): ServerInstance {
@@ -117,7 +147,7 @@ export function createServer(options: ServerOptions = {}): ServerInstance {
     })
   })
 
-  // 4. Serve local files inline for direct file open.
+  // 4. Serve local files for direct file open/download.
   app.get('/codex-local-file', (req, res) => {
     const rawPath = typeof req.query.path === 'string' ? req.query.path : ''
     const localPath = normalizeLocalPath(rawPath)
@@ -127,7 +157,7 @@ export function createServer(options: ServerOptions = {}): ServerInstance {
     }
 
     res.setHeader('Cache-Control', 'private, no-store')
-    res.setHeader('Content-Disposition', 'inline')
+    setLocalFileDisposition(res, localPath)
     res.sendFile(localPath, { dotfiles: 'allow' }, (error) => {
       if (!error) return
       if (!res.headersSent) res.status(404).json({ error: '文件不存在。' })
@@ -152,6 +182,7 @@ export function createServer(options: ServerOptions = {}): ServerInstance {
         return
       }
 
+      setLocalFileDisposition(res, localPath)
       res.sendFile(localPath, { dotfiles: 'allow' }, (error) => {
         if (!error) return
         if (!res.headersSent) res.status(404).json({ error: '文件不存在。' })

@@ -1173,7 +1173,10 @@ const toolQuestionOtherAnswers = ref<Record<string, string>>({})
 const mcpElicitationAnswers = ref<Record<string, string | boolean>>({})
 const hasPendingBelowFoldUpdates = ref(false)
 const autoFollowBottom = ref(props.scrollState?.isAtBottom !== false)
+const autoAnchoredLongResponseId = ref('')
 const BOTTOM_THRESHOLD_PX = 16
+const LONG_RESPONSE_ANCHOR_MAX_WIDTH_PX = 1100
+const LONG_RESPONSE_MIN_HEIGHT_PX = 260
 const IMAGE_MODAL_MIN_SCALE = 1
 const IMAGE_MODAL_MAX_SCALE = 4
 const IMAGE_MODAL_SCALE_STEP = 0.25
@@ -3392,12 +3395,81 @@ function applySavedScrollState(): void {
       : savedState.scrollTop
   container.scrollTop = Math.min(Math.max(targetScrollTop, 0), maxScrollTop)
   syncConversationViewport(container)
+  if (maybeAnchorLongAssistantResponse(true)) return
   scheduleEmitScrollState(container, true)
+}
+
+function isAssistantResponseEntry(entry: ConversationRenderEntry): entry is ConversationMessageEntry {
+  return (
+    entry.kind === 'message' &&
+    entry.message.role === 'assistant' &&
+    !isCommandMessage(entry.message) &&
+    entry.message.messageType !== 'worked' &&
+    entry.message.text.trim().length > 0
+  )
+}
+
+function findLatestAssistantResponseEntryAfterUser(): ConversationMessageEntry | null {
+  const entries = visibleRenderableEntries.value
+  let latestUserEntryIndex = -1
+
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index]
+    if (entry.kind === 'message' && entry.message.role === 'user') {
+      latestUserEntryIndex = index
+      break
+    }
+  }
+
+  for (let index = entries.length - 1; index > latestUserEntryIndex; index -= 1) {
+    const entry = entries[index]
+    if (isAssistantResponseEntry(entry)) {
+      return entry
+    }
+  }
+
+  return null
+}
+
+function maybeAnchorLongAssistantResponse(allowActualBottom = false): boolean {
+  const container = conversationListRef.value
+  if (!container) return false
+  if (!shouldLockToBottom() && !(allowActualBottom && isAtBottom(container))) return false
+  if (container.clientWidth > LONG_RESPONSE_ANCHOR_MAX_WIDTH_PX) return false
+
+  const responseEntry = findLatestAssistantResponseEntryAfterUser()
+  if (!responseEntry || autoAnchoredLongResponseId.value === responseEntry.message.id) {
+    return false
+  }
+
+  const responseElement = observedMessageElementsById.get(responseEntry.measureId)
+  if (!responseElement) return false
+
+  const containerRect = container.getBoundingClientRect()
+  const responseRect = responseElement.getBoundingClientRect()
+  const minLongResponseHeight = Math.max(LONG_RESPONSE_MIN_HEIGHT_PX, container.clientHeight * 0.55)
+  const isLongResponse = responseRect.height >= minLongResponseHeight
+  const responseStartIsHidden = responseRect.top < containerRect.top + 18
+  const responseStillContinues = responseRect.bottom > containerRect.bottom - 80
+  if (!isLongResponse || !responseStartIsHidden || !responseStillContinues) {
+    return false
+  }
+
+  autoAnchoredLongResponseId.value = responseEntry.message.id
+  autoFollowBottom.value = false
+  const maxScrollTop = Math.max(container.scrollHeight - container.clientHeight, 0)
+  const nextScrollTop = container.scrollTop + (responseRect.top - containerRect.top) - 18
+  container.scrollTop = Math.min(Math.max(nextScrollTop, 0), maxScrollTop)
+  syncConversationViewport(container)
+  scheduleEmitScrollState(container, true)
+  markBelowFoldUpdate()
+  return true
 }
 
 function enforceBottomState(): void {
   const container = conversationListRef.value
   if (!container) return
+  if (maybeAnchorLongAssistantResponse()) return
   autoFollowBottom.value = true
   scrollToBottom()
   syncConversationViewport(container)
@@ -3411,6 +3483,12 @@ function shouldLockToBottom(): boolean {
 
 function runBottomLockFrame(): void {
   if (!shouldLockToBottom()) {
+    bottomLockFramesLeft = 0
+    bottomLockFrame = 0
+    return
+  }
+
+  if (maybeAnchorLongAssistantResponse()) {
     bottomLockFramesLeft = 0
     bottomLockFrame = 0
     return
@@ -3584,6 +3662,7 @@ watch(
     canAutoRevealOlderMessages.value = true
     visibleMessageStartIndex.value = latestVisibleStartIndex(renderableConversationEntries.value.length)
     clearBelowFoldUpdates()
+    autoAnchoredLongResponseId.value = ''
     autoFollowBottom.value = props.scrollState?.isAtBottom !== false
   },
   { flush: 'post' },

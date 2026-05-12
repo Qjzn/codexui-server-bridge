@@ -1,11 +1,16 @@
 <template>
   <div class="skills-hub">
     <div class="skills-hub-header">
-      <h2 class="skills-hub-title">技能中心</h2>
-      <p class="skills-hub-subtitle">浏览并发现 OpenClaw 社区提供的技能</p>
+      <div class="skills-hub-heading">
+        <h2 class="skills-hub-title">技能中心</h2>
+        <p class="skills-hub-subtitle">安装、管理并发现 GitHub 上的 Codex 技能</p>
+      </div>
+      <button class="skills-hub-sort" type="button" @click="isSyncOpen = !isSyncOpen">
+        {{ isSyncOpen ? '收起同步' : '同步设置' }}
+      </button>
     </div>
 
-    <div class="skills-sync-panel">
+    <div v-if="isSyncOpen" class="skills-sync-panel">
       <div class="skills-sync-header">
         <strong>技能同步（GitHub）</strong>
         <a
@@ -49,6 +54,47 @@
 
     <div v-if="toast" class="skills-hub-toast" :class="toastClass">{{ toast.text }}</div>
 
+    <div class="skills-hub-toolbar">
+      <div class="skills-market-tabs" role="tablist" aria-label="技能市场">
+        <button
+          class="skills-market-tab"
+          :class="{ 'is-active': marketMode === 'hub' }"
+          type="button"
+          role="tab"
+          :aria-selected="marketMode === 'hub'"
+          @click="selectMarket('hub')"
+        >
+          默认市场
+        </button>
+        <button
+          class="skills-market-tab"
+          :class="{ 'is-active': marketMode === 'github' }"
+          type="button"
+          role="tab"
+          :aria-selected="marketMode === 'github'"
+          @click="selectMarket('github')"
+        >
+          GitHub 热门
+        </button>
+      </div>
+      <div class="skills-hub-search-wrap">
+        <IconTablerSearch class="skills-hub-search-icon" />
+        <input
+          ref="searchRef"
+          v-model="query"
+          class="skills-hub-search"
+          type="text"
+          :placeholder="marketMode === 'github' ? '搜索 GitHub 热门技能...' : '搜索技能...'"
+          @keyup.enter.prevent="onSearchSubmit"
+        />
+        <button class="skills-hub-search-btn" type="button" @click="onSearchSubmit">搜索</button>
+        <span v-if="totalCount > 0" class="skills-hub-count">{{ totalCount }} 个技能</span>
+      </div>
+      <button v-if="marketMode === 'hub'" class="skills-hub-sort" type="button" @click="toggleSort">
+        {{ sortLabel }}
+      </button>
+    </div>
+
     <div v-if="filteredInstalled.length > 0" class="skills-hub-section">
       <button class="skills-hub-section-toggle" type="button" @click="isInstalledOpen = !isInstalledOpen">
         <span class="skills-hub-section-title">已安装（{{ filteredInstalled.length }}）</span>
@@ -64,25 +110,6 @@
       </div>
     </div>
 
-    <div class="skills-hub-toolbar">
-      <div class="skills-hub-search-wrap">
-        <IconTablerSearch class="skills-hub-search-icon" />
-        <input
-          ref="searchRef"
-          v-model="query"
-          class="skills-hub-search"
-          type="text"
-          placeholder="搜索技能...（例如：docker、react、deploy）"
-          @keyup.enter.prevent="onSearchSubmit"
-        />
-        <button class="skills-hub-search-btn" type="button" @click="onSearchSubmit">搜索</button>
-        <span v-if="totalCount > 0" class="skills-hub-count">{{ totalCount }} 个技能</span>
-      </div>
-      <button class="skills-hub-sort" type="button" @click="toggleSort">
-        {{ sortLabel }}
-      </button>
-    </div>
-
     <div class="skills-hub-section">
       <LoadingInline v-if="isLoading" class="skills-hub-loading" label="正在加载技能..." tone="muted" />
       <div v-else-if="error" class="skills-hub-error">{{ error }}</div>
@@ -96,6 +123,7 @@
           />
         </div>
         <div v-else-if="activeQuery.trim()" class="skills-hub-empty">没有找到与“{{ activeQuery }}”相关的技能</div>
+        <div v-else class="skills-hub-empty">暂未发现可安装技能</div>
       </template>
     </div>
 
@@ -129,12 +157,14 @@ const searchRef = ref<HTMLInputElement | null>(null)
 const query = ref('')
 const activeQuery = ref('')
 const sortMode = ref<'date' | 'name'>('date')
+const marketMode = ref<'hub' | 'github'>('hub')
 const browseSkills = ref<HubSkill[]>([])
 const installedSkills = ref<HubSkill[]>([])
 const totalCount = ref(0)
 const isLoading = ref(false)
 const error = ref('')
 const isInstalledOpen = ref(true)
+const isSyncOpen = ref(false)
 const isDetailOpen = ref(false)
 const detailSkill = ref<HubSkill>(EMPTY_SKILL)
 const toast = ref<{ text: string; type: 'success' | 'error' } | null>(null)
@@ -187,7 +217,7 @@ function toggleSort(): void {
 }
 
 function cacheKey(q: string): string {
-  return `${sortMode.value}::${q.trim().toLowerCase()}`
+  return `${marketMode.value}::${sortMode.value}::${q.trim().toLowerCase()}`
 }
 
 function readCache(key: string): SkillsHubPayload | null {
@@ -253,10 +283,16 @@ async function fetchSkills(q: string): Promise<void> {
   try {
     const params = new URLSearchParams()
     if (normalizedQuery) params.set('q', normalizedQuery)
-    params.set('limit', '100')
-    params.set('sort', sortMode.value)
-    const resp = await fetch(`/codex-api/skills-hub?${params}`)
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+    params.set('limit', marketMode.value === 'github' ? '60' : '100')
+    if (marketMode.value === 'hub') params.set('sort', sortMode.value)
+    const endpoint = marketMode.value === 'github'
+      ? '/codex-api/skills-hub/github-search'
+      : '/codex-api/skills-hub'
+    const resp = await fetch(`${endpoint}?${params}`)
+    if (!resp.ok) {
+      const payload = await resp.json().catch(() => null) as { error?: string } | null
+      throw new Error(payload?.error || `HTTP ${resp.status}`)
+    }
     const data = (await resp.json()) as SkillsHubPayload
     applySkillsPayload(data)
     writeCache(key, data)
@@ -268,6 +304,12 @@ async function fetchSkills(q: string): Promise<void> {
 }
 
 function onSearchSubmit(): void {
+  void fetchSkills(query.value)
+}
+
+function selectMarket(nextMarket: 'hub' | 'github'): void {
+  if (marketMode.value === nextMarket) return
+  marketMode.value = nextMarket
   void fetchSkills(query.value)
 }
 
@@ -283,11 +325,17 @@ async function handleInstall(skill: HubSkill): Promise<void> {
     const resp = await fetch('/codex-api/skills-hub/install', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ owner: skill.owner, name: skill.name }),
+      body: JSON.stringify({
+        owner: skill.owner,
+        name: skill.name,
+        sourcePath: skill.sourcePath,
+        repoSlug: skill.repoSlug,
+        repoRef: skill.repoRef,
+      }),
     })
-    const data = (await resp.json()) as { ok?: boolean; error?: string; path?: string }
+    const data = (await resp.json()) as { ok?: boolean; error?: string }
     if (!data.ok) throw new Error(data.error || '安装失败')
-    const installed = { ...skill, installed: true, path: data.path, enabled: true }
+    const installed = { ...skill, installed: true, path: undefined, enabled: true }
     installedSkills.value = [...installedSkills.value, installed]
     browseSkills.value = browseSkills.value.filter((s) => s.name !== skill.name)
     detailSkill.value = installed
@@ -409,27 +457,43 @@ function onVisibilityChange(): void {
 @reference "tailwindcss";
 
 .skills-hub {
-  @apply flex flex-col gap-3 sm:gap-4 p-3 sm:p-6 max-w-4xl mx-auto w-full overflow-y-auto h-full;
+  @apply flex flex-col gap-3 p-3 sm:p-4 max-w-6xl mx-auto w-full overflow-y-auto h-full;
 }
 
 .skills-hub-header {
-  @apply flex flex-col gap-1;
+  @apply flex items-start justify-between gap-3;
+}
+
+.skills-hub-heading {
+  @apply flex min-w-0 flex-col gap-1;
 }
 
 .skills-hub-title {
-  @apply text-xl sm:text-2xl font-semibold text-zinc-900 m-0;
+  @apply text-lg sm:text-xl font-semibold text-zinc-900 m-0;
 }
 
 .skills-hub-subtitle {
-  @apply text-sm text-zinc-500 m-0;
+  @apply text-xs sm:text-sm text-zinc-500 m-0;
 }
 
 .skills-hub-toolbar {
-  @apply flex flex-col sm:flex-row items-stretch sm:items-center gap-2;
+  @apply sticky top-0 z-10 -mx-3 sm:-mx-4 px-3 sm:px-4 py-2 bg-white/95 backdrop-blur flex flex-col lg:flex-row items-stretch lg:items-center gap-2 border-b border-zinc-100;
+}
+
+.skills-market-tabs {
+  @apply grid grid-cols-2 rounded-lg border border-zinc-200 bg-zinc-50 p-0.5 lg:w-auto lg:min-w-[220px];
+}
+
+.skills-market-tab {
+  @apply min-h-9 rounded-md border-0 bg-transparent px-3 text-xs font-medium text-zinc-500 transition hover:text-zinc-800;
+}
+
+.skills-market-tab.is-active {
+  @apply bg-white text-zinc-900 shadow-sm;
 }
 
 .skills-hub-search-wrap {
-  @apply flex-1 flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 transition focus-within:border-zinc-400 focus-within:shadow-sm;
+  @apply flex-1 flex min-w-0 items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-2 transition focus-within:border-zinc-400 focus-within:shadow-sm;
 }
 
 .skills-hub-search-icon {
@@ -449,15 +513,15 @@ function onVisibilityChange(): void {
 }
 
 .skills-hub-sort {
-  @apply shrink-0 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-600 transition hover:bg-zinc-50 hover:border-zinc-300 cursor-pointer;
+  @apply min-h-9 shrink-0 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-600 transition hover:bg-zinc-50 hover:border-zinc-300 cursor-pointer;
 }
 
 .skills-sync-panel {
-  @apply rounded-xl border border-zinc-200 bg-zinc-50 p-3 flex flex-col gap-2;
+  @apply rounded-lg border border-zinc-200 bg-zinc-50 p-3 flex flex-col gap-2;
 }
 
 .skills-sync-header {
-  @apply flex flex-wrap items-center gap-2 text-sm text-zinc-700;
+  @apply flex flex-wrap items-center gap-2 text-sm font-medium text-zinc-700;
 }
 
 .skills-sync-badge {
@@ -517,7 +581,8 @@ function onVisibilityChange(): void {
 }
 
 .skills-hub-grid {
-  @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3;
+  @apply grid gap-2.5;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
 }
 
 .skills-hub-loading {

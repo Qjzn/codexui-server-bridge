@@ -580,7 +580,7 @@ if ($resolvedCloudflaredCommand) {
   Write-Host "cloudflared: $resolvedCloudflaredCommand"
 }
 if ($passwordValue -is [string]) {
-  Write-Host "Password: $passwordValue"
+  Write-Host "Password: enabled (hidden)"
 } elseif ($passwordValue -eq $false) {
   Write-Host "Password: disabled"
 }

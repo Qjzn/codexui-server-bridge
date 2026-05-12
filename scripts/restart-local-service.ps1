@@ -11,6 +11,8 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $distCliPath = Join-Path $repoRoot "dist-cli\index.js"
 $logDir = Join-Path $env:USERPROFILE ".cx-codex\logs"
+$defaultConfigPath = [IO.Path]::GetFullPath((Join-Path $env:USERPROFILE ".cx-codex\config.json"))
+$legacyConfigPath = [IO.Path]::GetFullPath((Join-Path $env:USERPROFILE ".codexui\config.json"))
 
 function Get-ManagedCodexUiProcessIds {
   param(
@@ -74,6 +76,13 @@ if (-not (Test-Path -LiteralPath $distCliPath)) {
 
 if (-not (Test-Path -LiteralPath $NodePath)) {
   throw "Missing Node runtime: $NodePath"
+}
+
+if (-not (Test-Path -LiteralPath $ConfigPath)) {
+  $normalizedRequestedConfigPath = [IO.Path]::GetFullPath($ConfigPath)
+  if ($normalizedRequestedConfigPath -ieq $defaultConfigPath -and (Test-Path -LiteralPath $legacyConfigPath)) {
+    $ConfigPath = $legacyConfigPath
+  }
 }
 
 if (-not (Test-Path -LiteralPath $ConfigPath)) {

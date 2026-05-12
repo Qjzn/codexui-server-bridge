@@ -10,8 +10,12 @@ import {
   buildInstalledHubEntries,
   extractSkillDescriptionFromMarkdown,
   fetchSkillsTree,
-  HUB_SKILLS_OWNER,
-  HUB_SKILLS_REPO,
+  getSkillsHubRawFileUrl,
+  getSkillsHubRawPathUrl,
+  getSkillsHubRepoSlug,
+  getSkillsHubSource,
+  getSkillsHubSkillPath,
+  searchGithubPopularSkills,
   searchSkillsHub,
   type InstalledSkillInfo,
 } from './skillsHubService.js'
@@ -52,6 +56,23 @@ function setJson(res: ServerResponse, statusCode: number, payload: unknown): voi
   res.statusCode = statusCode
   res.setHeader('Content-Type', 'application/json; charset=utf-8')
   res.end(JSON.stringify(payload))
+}
+
+function sanitizeRemoteSkillPath(path: string): string {
+  const normalized = path.trim().replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '')
+  if (!normalized || normalized.split('/').some((part) => part === '..' || part.length === 0)) return ''
+  return normalized
+}
+
+function sanitizeGithubRepoSlug(value: string): string {
+  const normalized = value.trim()
+  return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(normalized) ? normalized : ''
+}
+
+function sanitizeGithubRef(value: string): string {
+  const normalized = value.trim()
+  if (!normalized || normalized.includes('..')) return ''
+  return /^[A-Za-z0-9._/-]{1,120}$/u.test(normalized) ? normalized : ''
 }
 
 function getCodexHomeDir(): string {
@@ -922,6 +943,29 @@ export async function handleSkillsRoutes(
     return true
   }
 
+  if (req.method === 'GET' && url.pathname === '/codex-api/skills-hub/github-search') {
+    try {
+      const q = url.searchParams.get('q') || ''
+      const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') || '40', 10) || 40, 1), 100)
+      const installedMap = await scanInstalledSkillsFromDisk()
+      try {
+        const result = (await appServer.rpc('skills/list', {})) as { data?: Array<{ skills?: Array<{ name?: string; path?: string; enabled?: boolean }> }> }
+        for (const entry of result.data ?? []) {
+          for (const skill of entry.skills ?? []) {
+            if (skill.name) {
+              installedMap.set(skill.name, { name: skill.name, path: skill.path ?? '', enabled: skill.enabled !== false })
+            }
+          }
+        }
+      } catch {}
+      const results = await searchGithubPopularSkills(q, limit, installedMap)
+      setJson(res, 200, { data: results.data, installed: [], total: results.total })
+    } catch (error) {
+      setJson(res, 502, { error: getErrorMessage(error, 'Failed to search GitHub skills') })
+    }
+    return true
+  }
+
   if (req.method === 'GET' && url.pathname === '/codex-api/skills-sync/status') {
     const state = await readSkillsSyncState()
     setJson(res, 200, {
@@ -1110,6 +1154,7 @@ export async function handleSkillsRoutes(
       const name = url.searchParams.get('name') || ''
       const installed = url.searchParams.get('installed') === 'true'
       const skillPath = url.searchParams.get('path') || ''
+      const sourcePath = sanitizeRemoteSkillPath(url.searchParams.get('sourcePath') || '')
       if (!owner || !name) {
         setJson(res, 400, { error: 'Missing owner or name' })
         return true
@@ -1126,7 +1171,9 @@ export async function handleSkillsRoutes(
           return true
         }
       }
-      const rawUrl = `https://raw.githubusercontent.com/${HUB_SKILLS_OWNER}/${HUB_SKILLS_REPO}/main/skills/${owner}/${name}/SKILL.md`
+      const rawUrl = sourcePath
+        ? getSkillsHubRawPathUrl(sourcePath, 'SKILL.md')
+        : getSkillsHubRawFileUrl(owner, name, 'SKILL.md')
       const resp = await fetch(rawUrl)
       if (!resp.ok) throw new Error(`Failed to fetch SKILL.md: ${resp.status}`)
       const content = await resp.text()
@@ -1143,6 +1190,9 @@ export async function handleSkillsRoutes(
       const payload = asRecord(await readJsonBody(req))
       const owner = typeof payload?.owner === 'string' ? payload.owner : ''
       const name = typeof payload?.name === 'string' ? payload.name : ''
+      const sourcePath = sanitizeRemoteSkillPath(typeof payload?.sourcePath === 'string' ? payload.sourcePath : '')
+      const repoSlug = sanitizeGithubRepoSlug(typeof payload?.repoSlug === 'string' ? payload.repoSlug : '')
+      const repoRef = sanitizeGithubRef(typeof payload?.repoRef === 'string' ? payload.repoRef : '')
       if (!owner || !name) {
         setJson(res, 400, { error: 'Missing owner or name' })
         return true
@@ -1164,11 +1214,13 @@ export async function handleSkillsRoutes(
       if (existsSync(skillDir)) {
         await rm(skillDir, { recursive: true, force: true })
       }
+      const source = getSkillsHubSource()
       await runCommand(pythonCommand.command, [
         ...pythonCommand.args,
         installerScript,
-        '--repo', `${HUB_SKILLS_OWNER}/${HUB_SKILLS_REPO}`,
-        '--path', `skills/${owner}/${name}`,
+        '--repo', repoSlug || getSkillsHubRepoSlug(),
+        '--path', sourcePath || getSkillsHubSkillPath(owner, name),
+        '--ref', repoRef || source.ref,
         '--dest', installDest,
         '--method', 'git',
       ], { timeoutMs: 90_000 })
@@ -1177,7 +1229,7 @@ export async function handleSkillsRoutes(
       const nextOwners = { ...(syncState.installedOwners ?? {}), [name]: owner }
       await writeSkillsSyncState({ ...syncState, installedOwners: nextOwners })
       autoPushSyncedSkills(appServer).catch(() => {})
-      setJson(res, 200, { ok: true, path: skillDir })
+      setJson(res, 200, { ok: true, name })
     } catch (error) {
       setJson(res, 502, { error: getErrorMessage(error, 'Failed to install skill') })
     }

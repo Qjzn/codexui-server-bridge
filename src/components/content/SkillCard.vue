@@ -34,7 +34,11 @@
       </button>
     </div>
     <p v-if="skill.description" class="skill-card-desc">{{ skill.description }}</p>
-    <span v-if="publishedLabel" class="skill-card-date">{{ publishedLabel }}</span>
+    <div class="skill-card-meta">
+      <span v-if="skill.sourceLabel" class="skill-card-source">{{ skill.sourceLabel }}</span>
+      <span v-if="starLabel" class="skill-card-date">{{ starLabel }}</span>
+      <span v-if="publishedLabel" class="skill-card-date">{{ publishedLabel }}</span>
+    </div>
   </button>
 </template>
 
@@ -52,6 +56,11 @@ const props = defineProps<{
     avatarUrl?: string
     url: string
     installed: boolean
+    sourcePath?: string
+    repoSlug?: string
+    repoRef?: string
+    sourceLabel?: string
+    stars?: number
     path?: string
     enabled?: boolean
   }
@@ -83,6 +92,13 @@ const publishedLabel = computed(() => {
   return d.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
 })
 
+const starLabel = computed(() => {
+  const stars = props.skill.stars
+  if (!stars || stars <= 0) return ''
+  if (stars >= 1000) return `${(stars / 1000).toFixed(stars >= 10000 ? 0 : 1)}k stars`
+  return `${stars} stars`
+})
+
 function onAvatarError(e: Event): void {
   const img = e.target as HTMLImageElement
   img.style.display = 'none'
@@ -93,7 +109,7 @@ function onAvatarError(e: Event): void {
 @reference "tailwindcss";
 
 .skill-card {
-  @apply flex flex-col gap-1.5 rounded-xl border border-zinc-200 bg-white p-3 text-left transition hover:border-zinc-300 hover:shadow-sm cursor-pointer;
+  @apply flex min-h-[92px] flex-col gap-2 rounded-lg border border-zinc-200 bg-white p-3 text-left transition hover:border-zinc-300 hover:shadow-sm cursor-pointer;
 }
 
 .skill-card.is-disabled {
@@ -117,11 +133,11 @@ function onAvatarError(e: Event): void {
 }
 
 .skill-card-header {
-  @apply flex items-center gap-2;
+  @apply flex items-start gap-2 min-w-0;
 }
 
 .skill-card-name {
-  @apply text-sm font-medium text-zinc-900 truncate;
+  @apply min-w-0 flex-1 text-sm font-semibold leading-snug text-zinc-900 truncate;
 }
 
 .skill-card-badge {
@@ -133,7 +149,7 @@ function onAvatarError(e: Event): void {
 }
 
 .skill-card-owner {
-  @apply text-xs text-zinc-400;
+  @apply text-xs text-zinc-500 truncate;
 }
 
 .skill-card-browse {
@@ -145,10 +161,18 @@ function onAvatarError(e: Event): void {
 }
 
 .skill-card-desc {
-  @apply m-0 text-xs text-zinc-500 line-clamp-2;
+  @apply m-0 text-xs leading-relaxed text-zinc-600 line-clamp-1;
+}
+
+.skill-card-meta {
+  @apply flex min-w-0 items-center gap-2 text-[10px] text-zinc-400;
+}
+
+.skill-card-source {
+  @apply min-w-0 truncate rounded-md bg-zinc-50 px-1.5 py-0.5 text-zinc-500;
 }
 
 .skill-card-date {
-  @apply text-[10px] text-zinc-300;
+  @apply shrink-0 text-[10px] text-zinc-400;
 }
 </style>

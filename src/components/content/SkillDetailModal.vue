@@ -17,6 +17,10 @@
                 <span v-if="skill.installed && !effectiveEnabled" class="sdm-badge-disabled">已禁用</span>
               </div>
               <span class="sdm-owner">{{ skill.owner }}</span>
+              <div v-if="skill.sourceLabel || starLabel" class="sdm-meta-row">
+                <span v-if="skill.sourceLabel" class="sdm-meta-pill">{{ skill.sourceLabel }}</span>
+                <span v-if="starLabel" class="sdm-meta-pill">{{ starLabel }}</span>
+              </div>
             </div>
           </div>
           <button class="sdm-close" type="button" aria-label="关闭" @click="$emit('close')">
@@ -30,13 +34,13 @@
           <LoadingInline v-if="isLoadingReadme" class="sdm-readme-loading" label="正在加载技能内容..." tone="muted" />
           <div v-else-if="readmeContent" class="sdm-readme" v-html="renderedReadme"></div>
 
-          <a class="sdm-link" :href="skill.url" target="_blank" rel="noopener noreferrer">查看 GitHub 仓库</a>
+          <a v-if="skill.url" class="sdm-link" :href="skill.url" target="_blank" rel="noopener noreferrer">查看来源</a>
         </div>
 
         <div class="sdm-footer">
           <div class="sdm-footer-actions">
             <button
-              v-if="skill.installed"
+              v-if="canUninstall"
               class="sdm-btn sdm-btn-danger"
               type="button"
               :disabled="isActing"
@@ -45,7 +49,7 @@
               {{ props.isUninstalling ? '卸载中...' : '卸载' }}
             </button>
             <button
-              v-else
+              v-else-if="!skill.installed"
               class="sdm-btn sdm-btn-primary"
               type="button"
               :disabled="isActing"
@@ -55,7 +59,7 @@
             </button>
 
             <button
-              v-if="skill.installed"
+              v-if="canToggleEnabled"
               class="sdm-btn sdm-btn-secondary"
               type="button"
               :disabled="isActing"
@@ -93,6 +97,11 @@ export type HubSkill = {
   avatarUrl?: string
   url: string
   installed: boolean
+  sourcePath?: string
+  repoSlug?: string
+  repoRef?: string
+  sourceLabel?: string
+  stars?: number
   path?: string
   enabled?: boolean
 }
@@ -119,10 +128,18 @@ const isLoadingReadme = ref(false)
 const effectiveEnabled = computed(() => localEnabled.value ?? props.skill.enabled ?? true)
 const isActing = computed(() => (props.isInstalling === true) || (props.isUninstalling === true))
 const effectiveDescription = computed(() => localDescription.value || props.skill.description)
+const canUninstall = computed(() => props.skill.installed && Boolean(props.skill.sourcePath || props.skill.path))
+const canToggleEnabled = computed(() => props.skill.installed && Boolean(props.skill.path))
 const skillDirPath = computed(() => {
   const p = props.skill.path
   if (!p) return ''
   return p.endsWith('/SKILL.md') ? p.slice(0, -'/SKILL.md'.length) : p
+})
+const starLabel = computed(() => {
+  const stars = props.skill.stars
+  if (!stars || stars <= 0) return ''
+  if (stars >= 1000) return `${(stars / 1000).toFixed(stars >= 10000 ? 0 : 1)}k stars`
+  return `${stars} stars`
 })
 
 const renderedReadme = computed(() => {
@@ -158,6 +175,7 @@ async function fetchReadme(): Promise<void> {
     const params = new URLSearchParams({ owner: props.skill.owner, name: props.skill.name })
     if (props.skill.installed) params.set('installed', 'true')
     if (props.skill.path) params.set('path', props.skill.path)
+    if (props.skill.sourcePath) params.set('sourcePath', props.skill.sourcePath)
     const resp = await fetch(`/codex-api/skills-hub/readme?${params}`)
     if (!resp.ok) return
     const data = (await resp.json()) as { content?: string; description?: string }
@@ -241,6 +259,14 @@ function onBrowseFiles(): void {
 
 .sdm-owner {
   @apply text-xs text-zinc-400;
+}
+
+.sdm-meta-row {
+  @apply flex min-w-0 flex-wrap items-center gap-1.5;
+}
+
+.sdm-meta-pill {
+  @apply max-w-full truncate rounded-md bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-500;
 }
 
 .sdm-close {

@@ -302,6 +302,7 @@ export function subscribeRpcNotifications(
   let lastTransportActivityAtMs = Date.now()
 
   const preferredTransport = (): Transport => (typeof WebSocket !== 'undefined' ? 'ws' : 'sse')
+  const transportIsStale = (): boolean => Date.now() - lastTransportActivityAtMs >= TRANSPORT_STALE_MS
 
   const setConnectionState = (nextState: RpcConnectionState) => {
     if (connectionState === nextState) return
@@ -341,6 +342,13 @@ export function subscribeRpcNotifications(
     scheduleReconnect(preferredTransport())
   }
 
+  const recoverStaleForegroundTransport = () => {
+    if (closed) return
+    if (typeof document !== 'undefined' && document.hidden) return
+    if (!hasEverConnected || !transportIsStale()) return
+    forceTransportReconnect()
+  }
+
   const startTransportWatchdog = () => {
     clearTransportWatchdog()
     transportWatchdogTimer = window.setInterval(() => {
@@ -349,7 +357,7 @@ export function subscribeRpcNotifications(
         return
       }
       if (typeof document !== 'undefined' && document.hidden) return
-      if (Date.now() - lastTransportActivityAtMs < TRANSPORT_STALE_MS) return
+      if (!transportIsStale()) return
       forceTransportReconnect()
     }, TRANSPORT_STALE_CHECK_MS)
   }
@@ -530,10 +538,31 @@ export function subscribeRpcNotifications(
     attachSse(attemptId)
   }
 
+  const onVisibilityChange = () => {
+    if (typeof document !== 'undefined' && document.hidden) return
+    recoverStaleForegroundTransport()
+  }
+  const onForegroundSignal = () => {
+    recoverStaleForegroundTransport()
+  }
+
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', onVisibilityChange)
+  }
+  window.addEventListener('focus', onForegroundSignal)
+  window.addEventListener('pageshow', onForegroundSignal)
+  window.addEventListener('online', onForegroundSignal)
+
   connect(preferredTransport())
 
   return () => {
     closed = true
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+    window.removeEventListener('focus', onForegroundSignal)
+    window.removeEventListener('pageshow', onForegroundSignal)
+    window.removeEventListener('online', onForegroundSignal)
     clearReconnectTimer()
     clearTransportWatchdog()
     clearActiveTransport()
