@@ -1,11 +1,26 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 
+function normalizeInitialHashRoute(): void {
+  if (typeof window === 'undefined') return
+
+  const { pathname, search, hash } = window.location
+  const isKnownCleanRoute = pathname === '/skills'
+    || pathname === '/github-trending'
+    || pathname.startsWith('/thread/')
+  if (!isKnownCleanRoute) return
+  if (hash && hash !== '#/') return
+
+  window.history.replaceState(window.history.state, '', `/#${pathname}${search}`)
+}
+
+normalizeInitialHashRoute()
+
 const EmptyRouteView = {
   render: () => null,
 }
 
 const router = createRouter({
-  history: createWebHashHistory(),
+  history: createWebHashHistory('/'),
   routes: [
     {
       path: '/',

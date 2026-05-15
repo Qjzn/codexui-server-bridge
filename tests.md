@@ -1102,3 +1102,30 @@ This file tracks manual regression and feature verification steps.
   - 事件 replay 显示 `turn/completed` 的 `status=interrupted`。
   - 页面最终断言 `hasThinking=false`、`hasStop=false`。
   - `/codex-api/health` 收敛为 `pendingRpcCount=0`、`queuedRpcCount=0`、`pendingServerRequestCount=0`、`runtimeStore.uncertainRequestCount=0`。
+
+---
+
+### Feature: 技能中心 / GitHub 热门直达路由
+
+#### Prerequisites
+- 当前构建使用 hash router。
+- 7420 服务已启动并能访问 `http://127.0.0.1:7420`。
+
+#### Steps
+1. 直接打开 `http://127.0.0.1:7420/skills`。
+2. 直接打开 `http://127.0.0.1:7420/github-trending`。
+3. 分别确认页面内容和控制台状态。
+
+#### Expected Results
+- `/skills` 自动规范化为 `/#/skills` 并显示技能中心。
+- `/github-trending` 自动规范化为 `/#/github-trending` 并显示 GitHub 热门。
+- 两个入口都不落回首页，不出现白屏或空内容区。
+- 控制台无前端运行时错误。
+
+#### Regression Evidence
+- 2026-05-15 静态验证：`git diff --check` 通过。
+- 2026-05-15 构建验证：`npm.cmd run build:frontend` 通过。
+- 2026-05-15 浏览器自动化验证：
+  - 打开 `/skills?cb=<timestamp>` 后 URL 为 `/#/skills?cb=<timestamp>`，页面显示 `技能中心`、`安装、管理并发现 GitHub 上的 Codex 技能`、`已安装（63）`。
+  - 打开 `/github-trending?cb=<timestamp>` 后 URL 为 `/#/github-trending?cb=<timestamp>`，页面显示 `GitHub 热门`、`热门仓库`、`进入主页`。
+  - 两个页面控制台均无 error，Network 未捕获 404。
