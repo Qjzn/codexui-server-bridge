@@ -1,4 +1,4 @@
-# CX-Codex 2.2.1
+# CX-Codex 2.2.2
 
 Self-hosted OpenAI Codex Web UI and Android client bridge.
 
@@ -10,6 +10,7 @@ Self-hosted OpenAI Codex Web UI and Android client bridge.
 - 需要前端关闭后重新进入仍能恢复任务状态的人。
 - 想让发送、停止、刷新更接近原生 Codex 客户端稳定性的自托管用户。
 - 需要更紧凑的移动端输入框配置入口的人。
+- 需要在未配置 Android 签名 secret 的开源仓库里也能拿到 APK 备用包的人。
 
 ## 本次版本重点
 
@@ -19,6 +20,7 @@ Self-hosted OpenAI Codex Web UI and Android client bridge.
 - Android 恢复链路收口：回前台、解锁、网络恢复后按固定顺序重连事件流、回放 missed events、读取本地快照、必要时强制 reconcile。
 - 后台优先级优化：发送、停止、权限响应和当前线程恢复走交互优先级；会话列表、搜索、技能市场等外围请求降级缓存，减少阻塞。
 - 输入框配置优化：对话框内移除单独设置按钮，改为一个与桌面端一致的运行配置按钮，集中修改模型、质量和速度；只有快速模式才显示闪电标识。
+- Release 自动化增强：GitHub Actions 有签名 secret 时发布正式 APK；未配置签名 secret 时发布 `debug` 备用 APK，避免 Release 缺少 Android 包。
 - 日志与安全：runtime 日志、慢 RPC、恢复动作保留结构化观测，同时继续过滤密码、token、Authorization 和敏感 URL query。
 
 ## 快速安装
@@ -29,7 +31,9 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; irm https://raw.githubusercont
 
 ## Android APK
 
-如果本 Release 资产包含 `cx-codex-android-2.2.1.apk`，可下载后安装。
+如果本 Release 资产包含 `cx-codex-android-2.2.2.apk`，这是正式签名 APK。
+
+如果只包含 `cx-codex-android-debug-2.2.2.apk`，说明仓库尚未配置 Android 签名 secret；该包适合自托管测试和临时安装，后续正式签名 APK 可能需要先卸载 debug 包再安装。
 
 首次启动需要输入你自己的 Codex Web 服务地址；项目默认不内置任何私人地址。密钥登录成功后会保存在设备本地，用于后续无感重登。
 

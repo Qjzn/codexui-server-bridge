@@ -1,5 +1,15 @@
 # 更新日志
 
+## 2.2.2
+
+发布时间：2026-05-15
+
+- Release 自动化补强：
+  - GitHub Actions 现在会始终同步并构建 Android 壳。
+  - 配置 Android 签名 secret 时继续发布正式 `cx-codex-android-<version>.apk`。
+  - 未配置签名 secret 时自动发布 `cx-codex-android-debug-<version>.apk` 备用包，避免开源 Release 缺少 Android 安装资产。
+  - debug 备用包只用于自托管测试和临时安装；后续切换正式签名 APK 时可能需要先卸载 debug 包。
+
 ## 2.2.1
 
 发布时间：2026-05-15
