@@ -41,6 +41,13 @@ body:
       description: 请先删除密码、Token、真实域名等敏感内容。
       render: powershell
 
+  - type: input
+    id: version
+    attributes:
+      label: 项目版本
+      description: 如果是 Release 安装，请填写版本号；如果是源码安装，请填写 commit。
+      placeholder: 2.2.2
+
   - type: textarea
     id: result
     attributes:
@@ -57,6 +64,13 @@ body:
       placeholder: 例如：电脑运行服务，手机通过局域网或公网地址访问。
     validations:
       required: true
+
+  - type: textarea
+    id: health
+    attributes:
+      label: 健康检查结果
+      description: 如果服务已经启动，请粘贴脱敏后的 `/health` 和 `/codex-api/health` 关键字段。
+      render: text
 
   - type: checkboxes
     id: checklist

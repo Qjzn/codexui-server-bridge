@@ -50,13 +50,30 @@ body:
     attributes:
       label: 项目版本
       description: 可填写 Release 版本、Git commit，或页面设置里看到的版本信息。
-      placeholder: v0.2.0-bridge.3
+      placeholder: 2.2.2
+    validations:
+      required: true
+
+  - type: dropdown
+    id: access_mode
+    attributes:
+      label: 访问方式
+      options:
+        - 本机浏览器
+        - 局域网浏览器
+        - Android App
+        - 手机浏览器
+        - Cloudflare Tunnel
+        - frp / Nginx / Caddy / 其他反代
+        - 其他
+    validations:
+      required: true
 
   - type: textarea
     id: logs
     attributes:
       label: 日志或截图
-      description: 只粘贴与问题相关的片段，并先脱敏。
+      description: 只粘贴与问题相关的片段，并先脱敏。建议同时贴 `/health` 和 `/codex-api/health` 的关键字段。
       render: text
 
   - type: checkboxes

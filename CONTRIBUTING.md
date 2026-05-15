@@ -58,11 +58,11 @@ Windows 安装脚本 smoke：
 
 ## 版本节奏
 
-桥接版标签格式：
+版本标签使用普通语义化版本：
 
 ```text
-v0.2.0-bridge.3
-v0.2.1-bridge.1
+2.2.2
+2.3.0
 ```
 
 详细发版流程见 [RELEASE.md](./RELEASE.md)。

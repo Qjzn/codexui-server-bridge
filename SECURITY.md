@@ -4,7 +4,7 @@
 
 ## 支持版本
 
-当前只维护最新的 `bridge` 版本线。请优先升级到 [最新 Release](https://github.com/Qjzn/CX-Codex/releases/latest) 后再反馈安全问题。
+当前只维护最新 Release 版本线。请优先升级到 [最新 Release](https://github.com/Qjzn/CX-Codex/releases/latest) 后再反馈安全问题。
 
 ## 安全边界
 

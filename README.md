@@ -1,5 +1,11 @@
 # CX-Codex
 
+[![Latest release](https://img.shields.io/github/v/release/Qjzn/CX-Codex?label=release)](https://github.com/Qjzn/CX-Codex/releases/latest)
+[![Release build](https://github.com/Qjzn/CX-Codex/actions/workflows/release.yml/badge.svg)](https://github.com/Qjzn/CX-Codex/actions/workflows/release.yml)
+[![License](https://img.shields.io/github/license/Qjzn/CX-Codex)](./LICENSE)
+[![Android APK](https://img.shields.io/badge/Android-APK-3DDC84)](https://github.com/Qjzn/CX-Codex/releases/latest)
+[![Windows friendly](https://img.shields.io/badge/Windows-friendly-0078D4)](#快速安装)
+
 Self-hosted OpenAI Codex Web UI and Android client bridge.
 
 把本机 Codex 变成可从浏览器、手机和远程入口访问的稳定工作台。重点面向 Windows / Windows Server、Android、局域网、自托管远程访问和长期日常使用。
@@ -7,6 +13,21 @@ Self-hosted OpenAI Codex Web UI and Android client bridge.
 > 截图使用浏览器渲染的脱敏演示数据，不包含真实账号、真实路径、密钥、公网地址或私人会话内容。
 
 ![CX-Codex desktop workspace](./docs/screenshots/chat.png)
+
+## 快速入口
+
+- 最新 Release: [github.com/Qjzn/CX-Codex/releases/latest](https://github.com/Qjzn/CX-Codex/releases/latest)
+- Windows 一条命令安装: [快速安装](#快速安装)
+- Android 客户端说明: [docs/android-shell.zh-CN.md](./docs/android-shell.zh-CN.md)
+- 远程访问方案: [docs/cloudflare-tunnel.zh-CN.md](./docs/cloudflare-tunnel.zh-CN.md)
+- 问题反馈前排查: [SUPPORT.md](./SUPPORT.md)
+
+## 为什么用它
+
+- 原生 Codex 仍在本机运行，`CX-Codex` 只负责把浏览器、手机和远程访问链路做稳。
+- 重点解决 Windows 常驻、Android 恢复、长会话状态和远程入口这几类高频真实问题。
+- 默认不内置私人服务器地址，不要求上传私有项目、Token 或账号凭据。
+- Release 自动产出 Web 包、校验文件，并在没有签名 secret 时提供 Android debug 备用 APK。
 
 ## 核心卖点
 
@@ -104,7 +125,13 @@ http://127.0.0.1:7420
 - App 切后台或锁屏后恢复，会主动补同步线程状态和最新消息。
 - App 内链接可通过原生桥接打开。
 
-Release 页面会发布 Android APK；如果你自己构建，请查看：
+Release 页面会发布 Android APK：
+
+- 配置签名 secret 时发布正式 `cx-codex-android-<version>.apk`。
+- 未配置签名 secret 时发布 `cx-codex-android-debug-<version>.apk`，适合自托管测试和临时安装。
+- debug 包切换到正式签名包时，Android 可能要求先卸载旧 debug 包。
+
+如果你自己构建，请查看：
 
 - [docs/android-shell.zh-CN.md](./docs/android-shell.zh-CN.md)
 
@@ -206,3 +233,4 @@ OpenAI Codex Web UI, Codex Android client, self-hosted Codex, Codex browser brid
 - 稳定性、同步、手机端体验问题请使用 `Bug` Issue 模板。
 - 新能力建议请使用 `Feature` Issue 模板。
 - 提交截图、日志或配置前，请先脱敏密码、Token、Cookie、真实公网地址和个人目录。
+- 不确定如何描述问题时，先看 [SUPPORT.md](./SUPPORT.md) 的诊断命令和信息清单。

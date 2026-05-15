@@ -17,9 +17,9 @@
 
 ## 版本节奏
 
-- 紧急修复：`2.1.x`，只修 Android 闪退、登录失效、同步卡住、发布包缺失等阻断问题。
-- 稳定小版本：每 1-2 周一个 `2.1.x`，集中收口同一类稳定性问题。
-- 功能版本：`2.2.0`、`2.3.0`，只在能力完整、文档和回归路径齐全后发布。
+- 紧急修复：`2.2.x`，只修 Android 闪退、登录失效、同步卡住、发布包缺失等阻断问题。
+- 稳定小版本：每 1-2 周一个 patch 版本，集中收口同一类稳定性问题。
+- 功能版本：`2.3.0`、`2.4.0`，只在能力完整、文档和回归路径齐全后发布。
 - 不使用 `beta`、`rc`、`bridge` 等英文后缀。
 
 ## 运维检查
@@ -28,7 +28,7 @@
 
 1. `npm.cmd run build`
 2. Release zip 和 sha256 是否生成
-3. Android APK 是否生成或 GitHub Actions 是否具备签名 secrets
+3. Android APK 是否生成；没有签名 secrets 时必须生成 debug 备用 APK
 4. README 截图是否脱敏
 5. `.github/release-body.md` 是否是当前版本
 6. `docs/changelog.zh-CN.md` 是否写明用户可感知变化
@@ -102,6 +102,13 @@ README、Release 和 GitHub About 要持续覆盖这些关键词：
 2. Android 内置升级检查和失败回退路径继续稳定。
 3. 长会话渲染分页或虚拟列表。
 4. 更系统的 Playwright 回归和 Android 真机回归记录。
+
+## 当前运营动作
+
+- README 首屏长期保留 Release、构建、License、Android 和 Windows 入口 badge。
+- Issue 模板必须收集版本、平台、访问方式、健康检查和脱敏确认。
+- `SUPPORT.md` 作为反馈前置页，减少无效 Issue 和隐私泄露。
+- Release workflow 必须保证至少有 Web zip、sha256 和 Android debug 备用 APK。
 
 暂不优先：
 
