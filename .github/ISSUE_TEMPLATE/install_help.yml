@@ -46,7 +46,7 @@ body:
     attributes:
       label: 项目版本
       description: 如果是 Release 安装，请填写版本号；如果是源码安装，请填写 commit。
-      placeholder: 2.2.2
+      placeholder: 2.2.3
 
   - type: textarea
     id: result

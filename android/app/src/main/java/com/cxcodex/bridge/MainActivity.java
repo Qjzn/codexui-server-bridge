@@ -31,7 +31,22 @@ public class MainActivity extends BridgeActivity {
 
         if (MobileShellConfig.getStoredServerUrl(this).isEmpty()) {
             showServerSetupScreen();
-        } else if (bridge != null && bridge.getWebView() != null) {
+        } else {
+            configureWebViewDownloadListener();
+        }
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        configureWebViewDownloadListener();
+    }
+
+    private void configureWebViewDownloadListener() {
+        if (MobileShellConfig.getStoredServerUrl(this).isEmpty()) {
+            return;
+        }
+        if (bridge != null && bridge.getWebView() != null) {
             bridge.getWebView().setDownloadListener(this::onWebViewDownloadRequested);
         }
     }
@@ -45,7 +60,10 @@ public class MainActivity extends BridgeActivity {
     ) {
         try {
             DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
-            String fileName = URLUtil.guessFileName(url, contentDisposition, mimetype);
+            String resolvedMimeType = mimetype == null || mimetype.trim().isEmpty()
+                ? "application/octet-stream"
+                : mimetype.trim();
+            String fileName = URLUtil.guessFileName(url, contentDisposition, resolvedMimeType);
             String cookies = CookieManager.getInstance().getCookie(url);
             if (cookies != null && !cookies.isEmpty()) {
                 request.addRequestHeader("Cookie", cookies);
@@ -55,7 +73,9 @@ public class MainActivity extends BridgeActivity {
             }
             request.setTitle(fileName);
             request.setDescription("正在下载文件");
-            request.setMimeType(mimetype);
+            request.setMimeType(resolvedMimeType);
+            request.setAllowedOverMetered(true);
+            request.setAllowedOverRoaming(true);
             request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
             request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
 

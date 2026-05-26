@@ -76,7 +76,7 @@
               class="trending-card-action trending-card-action-primary"
               @click="emit('ask-project', project)"
             >
-              询问
+              解释
             </button>
           </div>
         </div>

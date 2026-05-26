@@ -50,7 +50,7 @@ body:
     attributes:
       label: 项目版本
       description: 可填写 Release 版本、Git commit，或页面设置里看到的版本信息。
-      placeholder: 2.2.2
+      placeholder: 2.2.3
     validations:
       required: true
 

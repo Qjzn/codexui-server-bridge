@@ -6,7 +6,7 @@ import { writeFile, stat } from 'node:fs/promises'
 import express, { type Express } from 'express'
 import { createCodexBridgeMiddleware } from './codexAppServerBridge.js'
 import { createAuthSession } from './authMiddleware.js'
-import { createDirectoryListingHtml, createTextEditorHtml, decodeBrowsePath, isTextEditableFile, normalizeLocalPath } from './localBrowseUi.js'
+import { createDirectoryListingHtml, createLocalFileActionHtml, createTextEditorHtml, decodeBrowsePath, isTextEditableFile, normalizeLocalPath } from './localBrowseUi.js'
 import { WebSocketServer, type WebSocket } from 'ws'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -33,6 +33,33 @@ const IMAGE_CONTENT_TYPES: Record<string, string> = {
   '.png': 'image/png',
   '.svg': 'image/svg+xml',
   '.webp': 'image/webp',
+}
+
+const LOCAL_FILE_CONTENT_TYPES: Record<string, string> = {
+  ...IMAGE_CONTENT_TYPES,
+  '.csv': 'text/csv; charset=utf-8',
+  '.doc': 'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.htm': 'text/html; charset=utf-8',
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.log': 'text/plain; charset=utf-8',
+  '.md': 'text/markdown; charset=utf-8',
+  '.odp': 'application/vnd.oasis.opendocument.presentation',
+  '.ods': 'application/vnd.oasis.opendocument.spreadsheet',
+  '.odt': 'application/vnd.oasis.opendocument.text',
+  '.pdf': 'application/pdf',
+  '.ppt': 'application/vnd.ms-powerpoint',
+  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  '.rtf': 'application/rtf',
+  '.ts': 'text/typescript; charset=utf-8',
+  '.txt': 'text/plain; charset=utf-8',
+  '.xls': 'application/vnd.ms-excel',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.xml': 'application/xml; charset=utf-8',
+  '.yaml': 'application/yaml; charset=utf-8',
+  '.yml': 'application/yaml; charset=utf-8',
 }
 
 const DOWNLOAD_ONLY_EXTENSIONS = new Set([
@@ -93,6 +120,14 @@ function encodeContentDispositionFileName(fileName: string): string {
 
 function shouldDownloadLocalFile(localPath: string): boolean {
   return DOWNLOAD_ONLY_EXTENSIONS.has(extname(localPath).toLowerCase())
+}
+
+function getLocalFileContentType(localPath: string): string {
+  return LOCAL_FILE_CONTENT_TYPES[extname(localPath).toLowerCase()] ?? 'application/octet-stream'
+}
+
+function setLocalFileContentType(res: express.Response, localPath: string): void {
+  res.setHeader('Content-Type', getLocalFileContentType(localPath))
 }
 
 function setLocalFileDisposition(res: express.Response, localPath: string): void {
@@ -157,6 +192,7 @@ export function createServer(options: ServerOptions = {}): ServerInstance {
     }
 
     res.setHeader('Cache-Control', 'private, no-store')
+    setLocalFileContentType(res, localPath)
     setLocalFileDisposition(res, localPath)
     res.sendFile(localPath, { dotfiles: 'allow' }, (error) => {
       if (!error) return
@@ -182,6 +218,16 @@ export function createServer(options: ServerOptions = {}): ServerInstance {
         return
       }
 
+      if (shouldDownloadLocalFile(localPath)) {
+        const html = createLocalFileActionHtml(localPath, {
+          sizeBytes: fileStat.size,
+          contentType: getLocalFileContentType(localPath),
+        })
+        res.status(200).type('text/html; charset=utf-8').send(html)
+        return
+      }
+
+      setLocalFileContentType(res, localPath)
       setLocalFileDisposition(res, localPath)
       res.sendFile(localPath, { dotfiles: 'allow' }, (error) => {
         if (!error) return

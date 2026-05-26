@@ -123,6 +123,10 @@ function toEditHref(pathValue: string): string {
   return `/codex-local-edit${encodeURI(routePath)}`
 }
 
+function toFileHref(pathValue: string): string {
+  return `/codex-local-file?path=${encodeURIComponent(pathValue)}&download=1`
+}
+
 function escapeForInlineScriptString(value: string): string {
   // Prevent breaking out of inline <script> blocks when file content contains HTML/script tokens.
   return JSON.stringify(value)
@@ -152,6 +156,262 @@ async function getDirectoryItems(localPath: string): Promise<DirectoryItem[]> {
     if (!a.isDirectory && b.isDirectory) return 1
     return a.name.localeCompare(b.name)
   })
+}
+
+function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return ''
+  if (bytes < 1024) return `${String(bytes)} B`
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let value = bytes / 1024
+  let unitIndex = 0
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex += 1
+  }
+  return `${value >= 10 ? value.toFixed(1) : value.toFixed(2)} ${units[unitIndex]}`
+}
+
+function fileTypeLabel(localPath: string): string {
+  const extension = extname(localPath).toLowerCase()
+  switch (extension) {
+    case '.doc':
+    case '.docx': return 'Word 文档'
+    case '.xls':
+    case '.xlsx': return 'Excel 表格'
+    case '.ppt':
+    case '.pptx': return 'PowerPoint 演示文稿'
+    case '.pdf': return 'PDF 文档'
+    case '.rtf': return 'RTF 文档'
+    case '.odt': return 'OpenDocument 文档'
+    case '.ods': return 'OpenDocument 表格'
+    case '.odp': return 'OpenDocument 演示文稿'
+    case '.zip':
+    case '.rar':
+    case '.7z':
+    case '.tar':
+    case '.gz':
+    case '.bz2':
+    case '.xz': return '压缩包'
+    default: return extension ? `${extension.slice(1).toUpperCase()} 文件` : '文件'
+  }
+}
+
+export function createLocalFileActionHtml(
+  localPath: string,
+  options: { sizeBytes: number; contentType: string },
+): string {
+  const parentPath = dirname(localPath)
+  const fileName = localPath.split(/[\\/]/u).pop() || localPath
+  const downloadHref = toFileHref(localPath)
+  const sizeLabel = formatFileSize(options.sizeBytes)
+  const typeLabel = fileTypeLabel(localPath)
+
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(fileName)}</title>
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f7f4ed;
+      color: #211f1b;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+    }
+    main {
+      width: min(680px, 100%);
+      border: 1px solid #ded5c8;
+      border-radius: 18px;
+      background: #fffdf8;
+      box-shadow: 0 18px 44px rgba(48, 38, 26, 0.10);
+      padding: 22px;
+    }
+    .kicker { margin: 0 0 8px; color: #6f665b; font-size: 14px; }
+    h1 { margin: 0; font-size: 24px; line-height: 1.25; word-break: break-word; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 18px; color: #70665b; }
+    .pill { border: 1px solid #ded5c8; border-radius: 999px; padding: 5px 10px; background: #faf6ed; }
+    .path {
+      border: 1px solid #e2dacf;
+      border-radius: 12px;
+      background: #f6f1e9;
+      color: #4f463d;
+      padding: 12px;
+      line-height: 1.5;
+      word-break: break-all;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px;
+    }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+    button, a.action {
+      min-height: 44px;
+      padding: 0 16px;
+      border-radius: 12px;
+      border: 1px solid #d7cebf;
+      background: #fffaf0;
+      color: #28231d;
+      font: inherit;
+      font-weight: 650;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    .primary { border-color: #0f8f83; background: #0f8f83; color: #ffffff; }
+    button:disabled { opacity: 0.65; cursor: default; }
+    a.action[aria-disabled="true"] { opacity: 0.65; pointer-events: none; cursor: default; }
+    .status { min-height: 1.4em; margin: 14px 0 0; color: #0f766e; font-size: 14px; }
+    .hint { margin: 12px 0 0; color: #7a7165; font-size: 13px; line-height: 1.5; }
+    @media (max-width: 640px) {
+      body { align-items: flex-start; padding: 12px; }
+      main { padding: 18px; border-radius: 14px; }
+      h1 { font-size: 20px; }
+      .actions { flex-direction: column; }
+      button, a.action { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="kicker">本地文件</p>
+    <h1>${escapeHtml(fileName)}</h1>
+    <div class="meta">
+      <span class="pill">${escapeHtml(typeLabel)}</span>
+      ${sizeLabel ? `<span class="pill">${escapeHtml(sizeLabel)}</span>` : ''}
+    </div>
+    <div class="path">${escapeHtml(localPath)}</div>
+    <div class="actions">
+      <button id="openBtn" class="primary" type="button">打开文件</button>
+      <a id="downloadBtn" class="action" href="${escapeHtml(downloadHref)}">下载文件</a>
+      <a class="action" href="${escapeHtml(toBrowseHref(parentPath))}">返回目录</a>
+      <button id="copyBtn" type="button">复制路径</button>
+    </div>
+    <p id="status" class="status"></p>
+    <p class="hint">Word、Excel、PPT 等文件会交给系统应用打开；如果没有安装对应应用，请先下载后用文件管理器打开。</p>
+  </main>
+  <script>
+    const fileName = ${escapeForInlineScriptString(fileName)};
+    const downloadHref = ${escapeForInlineScriptString(downloadHref)};
+    const contentType = ${escapeForInlineScriptString(options.contentType)};
+    const localPath = ${escapeForInlineScriptString(localPath)};
+    const status = document.getElementById('status');
+    const openBtn = document.getElementById('openBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const copyBtn = document.getElementById('copyBtn');
+    const ACTION_TIMEOUT_MS = 25000;
+
+    function getMobileShell() {
+      return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.MobileShell;
+    }
+
+    function setBusy(button, busy) {
+      if (button) button.disabled = busy;
+      if (downloadBtn) downloadBtn.setAttribute('aria-disabled', busy ? 'true' : 'false');
+    }
+
+    function withTimeout(promise, message) {
+      let timer = 0;
+      const timeout = new Promise((_, reject) => {
+        timer = window.setTimeout(() => reject(new Error(message)), ACTION_TIMEOUT_MS);
+      });
+      return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timer));
+    }
+
+    function requestBrowserDownload(message) {
+      status.textContent = message;
+      const anchor = document.createElement('a');
+      anchor.href = downloadHref;
+      anchor.download = fileName;
+      anchor.rel = 'noopener noreferrer';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => {
+        setBusy(openBtn, false);
+        if (status.textContent === message) {
+          status.textContent = '已请求系统下载；如果没有下载提示，请更新 Android 客户端或复制路径后在文件管理器中打开。';
+        }
+      }, 1200);
+    }
+
+    async function downloadWithMobileShell(absoluteUrl) {
+      const mobileShell = getMobileShell();
+      if (!mobileShell || typeof mobileShell.downloadFileFromUrl !== 'function') {
+        return false;
+      }
+      await withTimeout(
+        mobileShell.downloadFileFromUrl({ url: absoluteUrl, fileName, mimeType: contentType }),
+        '下载请求超时，请检查网络或稍后重试。'
+      );
+      status.textContent = '已加入系统下载，请在通知栏或下载目录查看。';
+      return true;
+    }
+
+    openBtn.addEventListener('click', async () => {
+      const absoluteUrl = new URL(downloadHref, window.location.href).toString();
+      const mobileShell = getMobileShell();
+      setBusy(openBtn, true);
+      status.textContent = '正在打开文件...';
+      try {
+        if (mobileShell && typeof mobileShell.openFileFromUrl === 'function') {
+          await withTimeout(
+            mobileShell.openFileFromUrl({ url: absoluteUrl, fileName, mimeType: contentType }),
+            '打开请求超时，已停止等待。'
+          );
+          status.textContent = '已交给系统应用打开。';
+          setBusy(openBtn, false);
+          return;
+        }
+
+        if (await downloadWithMobileShell(absoluteUrl)) {
+          setBusy(openBtn, false);
+          return;
+        }
+
+        requestBrowserDownload('当前 App 版本不支持直接打开，正在改为下载文件...');
+      } catch (error) {
+        status.textContent = error && error.message ? error.message : '打开失败，请尝试下载文件。';
+        setBusy(openBtn, false);
+      }
+    });
+
+    downloadBtn.addEventListener('click', async (event) => {
+      event.preventDefault();
+      if (downloadBtn.getAttribute('aria-disabled') === 'true') return;
+      const absoluteUrl = new URL(downloadHref, window.location.href).toString();
+      setBusy(openBtn, true);
+      status.textContent = '正在请求下载...';
+      try {
+        if (await downloadWithMobileShell(absoluteUrl)) {
+          setBusy(openBtn, false);
+          return;
+        }
+        requestBrowserDownload('正在请求系统下载...');
+      } catch (error) {
+        status.textContent = error && error.message ? error.message : '下载失败，请稍后重试。';
+        setBusy(openBtn, false);
+      }
+    });
+
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(localPath);
+        status.textContent = '路径已复制。';
+      } catch {
+        status.textContent = '复制失败，请手动选择路径。';
+      }
+    });
+  </script>
+</body>
+</html>`
 }
 
 export async function createDirectoryListingHtml(localPath: string): Promise<string> {

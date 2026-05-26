@@ -1,9 +1,11 @@
 package com.cxcodex.bridge;
 
 import android.Manifest;
+import android.app.DownloadManager;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
@@ -22,7 +24,10 @@ import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import android.webkit.CookieManager;
+import android.webkit.URLUtil;
 import android.webkit.WebView;
+import android.widget.Toast;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
@@ -379,6 +384,68 @@ public class MobileShellPlugin extends Plugin {
         new Thread(() -> downloadAndInstallApk(call, downloadUrl, resolvedFileName)).start();
     }
 
+    @PluginMethod
+    public void openFileFromUrl(PluginCall call) {
+        String downloadUrl = MobileShellConfig.normalizeServerUrl(call.getString("url", ""));
+        if (!isValidDownloadUrl(downloadUrl)) {
+            call.reject("文件地址无效，请检查链接");
+            return;
+        }
+
+        if (!hasActiveNetworkConnection()) {
+            call.reject("当前没有可用网络，无法打开文件");
+            return;
+        }
+
+        String mimeType = normalizeMimeType(call.getString("mimeType", ""));
+        String fileName = sanitizeFileName(call.getString("fileName", ""));
+        if (fileName.isEmpty()) {
+            fileName = sanitizeFileName(URLUtil.guessFileName(downloadUrl, null, mimeType));
+        }
+        if (fileName.isEmpty()) {
+            fileName = "cx-codex-file";
+        }
+
+        final String resolvedFileName = fileName;
+        final String resolvedMimeType = mimeType;
+        new Thread(() -> downloadAndOpenFile(call, downloadUrl, resolvedFileName, resolvedMimeType)).start();
+    }
+
+    @PluginMethod
+    public void downloadFileFromUrl(PluginCall call) {
+        String downloadUrl = MobileShellConfig.normalizeServerUrl(call.getString("url", ""));
+        if (!isValidDownloadUrl(downloadUrl)) {
+            call.reject("文件地址无效，请检查链接");
+            return;
+        }
+
+        if (!hasActiveNetworkConnection()) {
+            call.reject("当前没有可用网络，无法下载文件");
+            return;
+        }
+
+        String mimeType = normalizeMimeType(call.getString("mimeType", ""));
+        String fileName = sanitizeFileName(call.getString("fileName", ""));
+        if (fileName.isEmpty()) {
+            fileName = sanitizeFileName(URLUtil.guessFileName(downloadUrl, null, mimeType));
+        }
+        if (fileName.isEmpty()) {
+            fileName = "cx-codex-file";
+        }
+
+        try {
+            long downloadId = enqueueSystemDownload(downloadUrl, fileName, mimeType);
+            JSObject result = new JSObject();
+            result.put("status", "queued");
+            result.put("downloadId", downloadId);
+            result.put("fileName", fileName);
+            result.put("mimeType", mimeType);
+            call.resolve(result);
+        } catch (Exception exception) {
+            call.reject("下载文件失败：" + exception.getMessage(), exception);
+        }
+    }
+
     private void downloadAndInstallApk(PluginCall call, String downloadUrl, String fileName) {
         HttpURLConnection connection = null;
         File targetDirectory = getContext().getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
@@ -454,6 +521,97 @@ public class MobileShellPlugin extends Plugin {
         } catch (Exception exception) {
             Exception resolvedException = exception instanceof Exception ? (Exception) exception : new Exception(exception);
             mainHandler.post(() -> call.reject("下载更新失败：" + resolvedException.getMessage(), resolvedException));
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
+    private void downloadAndOpenFile(PluginCall call, String downloadUrl, String fileName, String requestedMimeType) {
+        HttpURLConnection connection = null;
+        File targetDirectory = getContext().getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+        if (targetDirectory == null) {
+            targetDirectory = new File(getContext().getFilesDir(), "downloads");
+        }
+        if (!targetDirectory.exists() && !targetDirectory.mkdirs()) {
+            File finalTargetDirectory = targetDirectory;
+            mainHandler.post(() -> call.reject("打开文件失败：无法创建下载目录 " + finalTargetDirectory.getAbsolutePath()));
+            return;
+        }
+
+        File targetFile = new File(targetDirectory, fileName);
+        File tempFile = new File(targetDirectory, fileName + ".download");
+        try {
+            if (targetFile.exists() && !targetFile.delete()) {
+                throw new IOException("无法覆盖旧文件");
+            }
+            if (tempFile.exists() && !tempFile.delete()) {
+                throw new IOException("无法清理旧临时文件");
+            }
+
+            connection = (HttpURLConnection) new URL(downloadUrl).openConnection();
+            connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
+            connection.setReadTimeout(READ_TIMEOUT_MS);
+            connection.setRequestProperty("Accept", buildFileAcceptHeader(requestedMimeType));
+            connection.setRequestProperty("User-Agent", "CX-Codex-Android-FileOpener");
+            String cookies = CookieManager.getInstance().getCookie(downloadUrl);
+            if (cookies != null && !cookies.isEmpty()) {
+                connection.setRequestProperty("Cookie", cookies);
+            }
+            connection.setUseCaches(false);
+            connection.setInstanceFollowRedirects(true);
+            connection.connect();
+
+            int statusCode = connection.getResponseCode();
+            if (statusCode < 200 || statusCode >= 300) {
+                throw new IOException("HTTP " + statusCode);
+            }
+
+            long expectedLength = connection.getContentLengthLong();
+            long totalBytes = 0L;
+            try (InputStream inputStream = connection.getInputStream();
+                 OutputStream outputStream = new FileOutputStream(tempFile)) {
+                byte[] buffer = new byte[16 * 1024];
+                int readLength;
+                while ((readLength = inputStream.read(buffer)) != -1) {
+                    outputStream.write(buffer, 0, readLength);
+                    totalBytes += readLength;
+                }
+                outputStream.flush();
+            }
+
+            if (totalBytes <= 0) {
+                throw new IOException("下载内容为空");
+            }
+            if (expectedLength > 0 && totalBytes < expectedLength) {
+                throw new IOException("文件下载不完整");
+            }
+            if (!tempFile.renameTo(targetFile)) {
+                throw new IOException("无法写入下载文件");
+            }
+
+            String responseMimeType = normalizeMimeType(connection.getContentType());
+            String resolvedMimeType = resolveFileMimeType(fileName, requestedMimeType, responseMimeType);
+            File openedFile = targetFile;
+            mainHandler.post(() -> {
+                try {
+                    openFileIntent(openedFile, resolvedMimeType);
+                    JSObject result = new JSObject();
+                    result.put("status", "opened");
+                    result.put("fileName", fileName);
+                    result.put("savedPath", openedFile.getAbsolutePath());
+                    result.put("mimeType", resolvedMimeType);
+                    call.resolve(result);
+                } catch (ActivityNotFoundException exception) {
+                    call.reject("没有找到可打开此文件的应用，文件已保存到：" + openedFile.getAbsolutePath(), exception);
+                } catch (Exception exception) {
+                    call.reject("打开文件失败：" + exception.getMessage(), exception);
+                }
+            });
+        } catch (Exception exception) {
+            Exception resolvedException = exception instanceof Exception ? (Exception) exception : new Exception(exception);
+            mainHandler.post(() -> call.reject("打开文件失败：" + resolvedException.getMessage(), resolvedException));
         } finally {
             if (connection != null) {
                 connection.disconnect();
@@ -599,6 +757,107 @@ public class MobileShellPlugin extends Plugin {
         }
         if ("medium".equals(normalizedStyle)) return HapticFeedbackConstants.CONTEXT_CLICK;
         return HapticFeedbackConstants.KEYBOARD_TAP;
+    }
+
+    private static String buildFileAcceptHeader(String mimeType) {
+        String normalizedMimeType = normalizeMimeType(mimeType);
+        if (normalizedMimeType.isEmpty()) {
+            return "application/octet-stream,*/*";
+        }
+        return normalizedMimeType + ",application/octet-stream,*/*";
+    }
+
+    private static String normalizeMimeType(String value) {
+        String normalized = value == null ? "" : value.trim();
+        int separatorIndex = normalized.indexOf(';');
+        if (separatorIndex >= 0) {
+            normalized = normalized.substring(0, separatorIndex).trim();
+        }
+        if (normalized.isEmpty() || normalized.equalsIgnoreCase("null")) {
+            return "";
+        }
+        return normalized.toLowerCase(Locale.ROOT);
+    }
+
+    private static String resolveFileMimeType(String fileName, String requestedMimeType, String responseMimeType) {
+        String requested = normalizeMimeType(requestedMimeType);
+        if (!requested.isEmpty() && !requested.equals("application/octet-stream")) {
+            return requested;
+        }
+        String response = normalizeMimeType(responseMimeType);
+        if (!response.isEmpty() && !response.equals("application/octet-stream")) {
+            return response;
+        }
+
+        String extension = "";
+        int dotIndex = fileName == null ? -1 : fileName.lastIndexOf('.');
+        if (dotIndex >= 0 && dotIndex < fileName.length() - 1) {
+            extension = fileName.substring(dotIndex + 1).toLowerCase(Locale.ROOT);
+        }
+        switch (extension) {
+            case "doc": return "application/msword";
+            case "docx": return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            case "xls": return "application/vnd.ms-excel";
+            case "xlsx": return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            case "ppt": return "application/vnd.ms-powerpoint";
+            case "pptx": return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+            case "pdf": return "application/pdf";
+            case "rtf": return "application/rtf";
+            case "txt": return "text/plain";
+            case "md": return "text/markdown";
+            default: return "application/octet-stream";
+        }
+    }
+
+    private long enqueueSystemDownload(String downloadUrl, String fileName, String mimeType) {
+        DownloadManager.Request request = new DownloadManager.Request(Uri.parse(downloadUrl));
+        String resolvedMimeType = normalizeMimeType(mimeType);
+        if (resolvedMimeType.isEmpty()) {
+            resolvedMimeType = resolveFileMimeType(fileName, "", "");
+        }
+
+        String cookies = CookieManager.getInstance().getCookie(downloadUrl);
+        if (cookies != null && !cookies.isEmpty()) {
+            request.addRequestHeader("Cookie", cookies);
+        }
+        request.addRequestHeader("User-Agent", "CX-Codex-Android-FileDownloader");
+        request.setTitle(fileName);
+        request.setDescription("正在下载文件");
+        request.setMimeType(resolvedMimeType);
+        request.setAllowedOverMetered(true);
+        request.setAllowedOverRoaming(true);
+        request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+        request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
+
+        DownloadManager manager = (DownloadManager) getContext().getSystemService(Context.DOWNLOAD_SERVICE);
+        if (manager == null) {
+            throw new IllegalStateException("系统下载服务不可用");
+        }
+        long downloadId = manager.enqueue(request);
+        mainHandler.post(() -> showToast("已开始下载：" + fileName));
+        return downloadId;
+    }
+
+    private void openFileIntent(File file, String mimeType) {
+        Uri fileUri = FileProvider.getUriForFile(
+            getContext(),
+            getContext().getPackageName() + ".fileprovider",
+            file
+        );
+
+        Intent openIntent = new Intent(Intent.ACTION_VIEW);
+        String normalizedMimeType = normalizeMimeType(mimeType);
+        openIntent.setDataAndType(fileUri, normalizedMimeType.isEmpty() ? "application/octet-stream" : normalizedMimeType);
+        openIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        openIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        getContext().startActivity(openIntent);
+    }
+
+    private void showToast(String message) {
+        if (getContext() == null) {
+            return;
+        }
+        Toast.makeText(getContext(), message, Toast.LENGTH_SHORT).show();
     }
 
     private void openInstallIntent(File apkFile) {

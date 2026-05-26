@@ -29,7 +29,10 @@
         </div>
 
         <div class="sdm-body">
-          <p v-if="effectiveDescription" class="sdm-desc">{{ effectiveDescription }}</p>
+          <section v-if="effectiveDescription" class="sdm-explanation" aria-label="解释">
+            <p class="sdm-section-label">解释</p>
+            <p class="sdm-desc">{{ effectiveDescription }}</p>
+          </section>
 
           <LoadingInline v-if="isLoadingReadme" class="sdm-readme-loading" label="正在加载技能内容..." tone="muted" />
           <div v-else-if="readmeContent" class="sdm-readme" v-html="renderedReadme"></div>
@@ -281,8 +284,16 @@ function onBrowseFiles(): void {
   @apply p-4 sm:p-5 pt-0 flex flex-col gap-3 overflow-y-auto flex-1 min-h-0;
 }
 
+.sdm-explanation {
+  @apply flex flex-col gap-1.5 rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2.5;
+}
+
+.sdm-section-label {
+  @apply m-0 text-[11px] font-semibold leading-none text-zinc-500;
+}
+
 .sdm-desc {
-  @apply m-0 text-sm text-zinc-600 leading-relaxed;
+  @apply m-0 text-sm text-zinc-700 leading-relaxed;
 }
 
 .sdm-readme-loading {

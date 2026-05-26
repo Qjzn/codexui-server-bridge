@@ -537,6 +537,19 @@
                 <span v-if="contentStatusDetail" class="content-status-detail">{{ contentStatusDetail }}</span>
               </div>
               <button
+                v-if="showDesktopSyncNotice"
+                class="content-desktop-sync-button"
+                type="button"
+                :data-busy="isDesktopRefreshRunning ? 'true' : 'false'"
+                :disabled="isDesktopRefreshRunning"
+                :title="desktopSyncNoticeTitle"
+                :aria-label="desktopSyncNoticeTitle"
+                @click="onRefreshDesktopApp"
+              >
+                <IconTablerRefresh class="content-desktop-sync-button-icon" />
+                <span>{{ desktopSyncNoticeLabel }}</span>
+              </button>
+              <button
                 class="content-favorites-button"
                 type="button"
                 title="查看全局收藏内容"
@@ -1152,6 +1165,8 @@ const desktopAppStatus = ref<DesktopAppStatus>({
 })
 const isDesktopRefreshRunning = ref(false)
 const isDesktopRefreshConfirmVisible = ref(false)
+const desktopSyncPendingThreadId = ref('')
+const desktopSyncPendingAtMs = ref(0)
 
 const routeThreadId = computed(() => {
   const rawThreadId = route.params.threadId
@@ -1815,6 +1830,23 @@ const desktopRefreshButtonTitle = computed(() => {
 const desktopRefreshButtonLabel = computed(() => (
   isDesktopRefreshRunning.value ? '刷新中...' : '刷新桌面端'
 ))
+const showDesktopSyncNotice = computed(() => (
+  !isMobileShellAvailable.value &&
+  desktopSyncPendingThreadId.value.trim().length > 0 &&
+  desktopAppStatus.value.available
+))
+const desktopSyncNoticeLabel = computed(() => (
+  isDesktopRefreshRunning.value
+    ? '同步中'
+    : desktopAppStatus.value.appRunning ? '桌面待同步' : '打开桌面端'
+))
+const desktopSyncNoticeTitle = computed(() => {
+  if (isDesktopRefreshRunning.value) return '正在刷新官方 Codex 桌面端。'
+  const elapsedMs = desktopSyncPendingAtMs.value > 0 ? Date.now() - desktopSyncPendingAtMs.value : 0
+  const elapsedText = elapsedMs > 60_000 ? `，已等待 ${Math.max(1, Math.round(elapsedMs / 60_000))} 分钟` : ''
+  const actionText = desktopAppStatus.value.appRunning ? '关闭并重开桌面端' : '打开桌面端'
+  return `Web 端已发送新任务${elapsedText}。官方桌面端不会实时接收 7420 的任务事件，点击后会${actionText}以载入最新会话。`
+})
 const hasUnreadThreads = computed(() =>
   projectGroups.value.some((group) => group.threads.some((thread) => thread.unread)),
 )
@@ -2384,6 +2416,19 @@ function closeDesktopRefreshConfirm(): void {
   isDesktopRefreshConfirmVisible.value = false
 }
 
+function markDesktopSyncPending(threadId: string): void {
+  const normalizedThreadId = threadId.trim()
+  if (!normalizedThreadId) return
+  if (isMobileShellAvailable.value) return
+  desktopSyncPendingThreadId.value = normalizedThreadId
+  desktopSyncPendingAtMs.value = Date.now()
+}
+
+function clearDesktopSyncPending(): void {
+  desktopSyncPendingThreadId.value = ''
+  desktopSyncPendingAtMs.value = 0
+}
+
 function confirmDesktopRefresh(): void {
   if (!desktopAppStatus.value.available || isDesktopRefreshRunning.value) {
     closeDesktopRefreshConfirm()
@@ -2394,6 +2439,7 @@ function confirmDesktopRefresh(): void {
   isDesktopRefreshRunning.value = true
   void refreshDesktopApp()
     .then((result) => {
+      clearDesktopSyncPending()
       window.alert(result.message)
     })
     .catch((error: unknown) => {
@@ -2711,7 +2757,13 @@ function onSubmitThreadMessage(payload: SubmitPayload): void {
     payload.fileAttachments,
     queueInsertIndex,
     payload.collaborationMode,
-  )
+  ).then(() => {
+    if (payload.mode !== 'queue') {
+      markDesktopSyncPending(selectedThreadId.value)
+    }
+  }).catch(() => {
+    // The send path already reflects failures in the main state.
+  })
 }
 
 function onGithubTipsScopeChange(nextValue: string): void {
@@ -2841,6 +2893,7 @@ async function rollbackAndResendDictation(payload: {
     undefined,
     payload.collaborationMode,
   )
+  markDesktopSyncPending(selectedThreadId.value)
 }
 
 function onSelectNewThreadFolder(cwd: string): void {
@@ -3479,7 +3532,7 @@ async function submitFirstMessageForNewThread(
   skills: Array<{ name: string; path: string }> = [],
   fileAttachments: Array<{ label: string; path: string; fsPath: string }> = [],
   collaborationMode: CollaborationMode = selectedCollaborationMode.value,
-): Promise<void> {
+): Promise<string> {
   try {
     worktreeInitStatus.value = { phase: 'idle', title: '', message: '' }
     let targetCwd = newThreadCwd.value
@@ -3500,14 +3553,17 @@ async function submitFirstMessageForNewThread(
           title: '工作树初始化失败',
           message: '无法创建工作树，请重试或切换到当前项目。',
         }
-        return
+        return ''
       }
     }
     const threadId = await sendMessageToNewThread(text, targetCwd, imageUrls, skills, fileAttachments, collaborationMode)
-    if (!threadId) return
+    if (!threadId) return ''
     await router.replace({ name: 'thread', params: { threadId } })
+    markDesktopSyncPending(threadId)
+    return threadId
   } catch {
     // Error is already reflected in state.
+    return ''
   }
 }
 </script>
@@ -3865,6 +3921,29 @@ async function submitFirstMessageForNewThread(
 .content-status-detail {
   @apply hidden sm:inline text-[11px] leading-4 text-[#8f8577] truncate;
   max-width: min(40rem, 52vw);
+}
+
+.content-desktop-sync-button {
+  @apply inline-flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-full border border-[#e7d9b0] bg-[#fcf7e8] px-2.5 text-[10px] font-semibold text-[#7a5b0c] transition-[background-color,border-color,color,transform] duration-150 hover:border-[#d7c17b] hover:bg-[#f8edc5] hover:text-[#4a3808] disabled:cursor-not-allowed disabled:opacity-70;
+  font-family: var(--font-sans-ui);
+  letter-spacing: -0.006em;
+  touch-action: manipulation;
+}
+
+.content-desktop-sync-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.content-desktop-sync-button[data-busy='true'] {
+  @apply border-[#d8ccba] bg-[#f7f1e5] text-[#6d6354];
+}
+
+.content-desktop-sync-button-icon {
+  @apply h-3.5 w-3.5;
+}
+
+.content-desktop-sync-button[data-busy='true'] .content-desktop-sync-button-icon {
+  animation: content-title-refresh-spin 0.9s linear infinite;
 }
 
 

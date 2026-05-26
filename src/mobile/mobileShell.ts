@@ -69,6 +69,20 @@ export type MobileShellOpenUrlResult = {
   opened: boolean
 }
 
+export type MobileShellOpenFileResult = {
+  status: 'opened'
+  fileName?: string
+  savedPath?: string
+  mimeType?: string
+}
+
+export type MobileShellDownloadFileResult = {
+  status: 'queued'
+  downloadId?: number
+  fileName?: string
+  mimeType?: string
+}
+
 type MobileShellPlugin = {
   getServerConfig(): Promise<MobileShellServerConfig>
   setServerUrl(options: { serverUrl: string }): Promise<MobileShellServerConfig>
@@ -90,6 +104,8 @@ type MobileShellPlugin = {
   }): Promise<MobileShellNotificationResult>
   installApkFromUrl(options: { url: string; fileName?: string }): Promise<MobileShellInstallResult>
   openUrl(options: { url: string }): Promise<MobileShellOpenUrlResult>
+  openFileFromUrl(options: { url: string; fileName?: string; mimeType?: string }): Promise<MobileShellOpenFileResult>
+  downloadFileFromUrl(options: { url: string; fileName?: string; mimeType?: string }): Promise<MobileShellDownloadFileResult>
 }
 
 const MobileShell = registerPlugin<MobileShellPlugin>('MobileShell')
@@ -163,4 +179,20 @@ export async function installMobileShellApk(url: string, fileName = ''): Promise
 
 export async function openMobileShellUrl(url: string): Promise<MobileShellOpenUrlResult> {
   return await MobileShell.openUrl({ url })
+}
+
+export async function openMobileShellFileFromUrl(
+  url: string,
+  fileName = '',
+  mimeType = '',
+): Promise<MobileShellOpenFileResult> {
+  return await MobileShell.openFileFromUrl({ url, fileName, mimeType })
+}
+
+export async function downloadMobileShellFileFromUrl(
+  url: string,
+  fileName = '',
+  mimeType = '',
+): Promise<MobileShellDownloadFileResult> {
+  return await MobileShell.downloadFileFromUrl({ url, fileName, mimeType })
 }
