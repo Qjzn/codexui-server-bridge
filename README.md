@@ -19,6 +19,7 @@ Self-hosted OpenAI Codex Web UI and Android client bridge.
 - 最新 Release: [github.com/Qjzn/CX-Codex/releases/latest](https://github.com/Qjzn/CX-Codex/releases/latest)
 - Windows 一条命令安装: [快速安装](#快速安装)
 - Android 客户端说明: [docs/android-shell.zh-CN.md](./docs/android-shell.zh-CN.md)
+- 平台兼容与 Slash Command 支持: [docs/platform-and-commands.zh-CN.md](./docs/platform-and-commands.zh-CN.md)
 - 远程访问方案: [docs/cloudflare-tunnel.zh-CN.md](./docs/cloudflare-tunnel.zh-CN.md)
 - 问题反馈前排查: [SUPPORT.md](./SUPPORT.md)
 
@@ -124,6 +125,7 @@ http://127.0.0.1:7420
 - 输入访问密钥后永久保存，Cookie 或 token 失效时自动重登。
 - App 切后台或锁屏后恢复，会主动补同步线程状态和最新消息。
 - App 内链接可通过原生桥接打开。
+- 本地文档支持在 App 内预览或交给系统应用打开，包括 Markdown、PDF、DOCX、文本和图片。
 
 Release 页面会发布 Android APK：
 
@@ -193,7 +195,7 @@ Cloudflare Tunnel 一条命令：
 - 移动端恢复补同步
 - 线程列表、会话内容、执行状态和停止状态展示
 - 消息收藏、置顶、复制和跳转
-- 本地文件链接和图片预览
+- 本地文件链接、图片 / Markdown / PDF / DOCX 预览
 - GitHub 热门项目模块
 - MCP / 工具权限控制
 - Windows bootstrap 和发布包

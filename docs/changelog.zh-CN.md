@@ -1,5 +1,12 @@
 # 更新日志
 
+## 未发布
+
+- 文档运营：
+  - 新增 [平台兼容与 Slash Command 支持](./platform-and-commands.zh-CN.md)，说明 Windows、Android、Linux、WSL2 和 macOS 的支持边界。
+  - 补充 `/model`、`/skill`、计划模式、图片、文件引用和工具权限在 CX-Codex 中的等价入口。
+  - README 增加平台兼容入口，并补充本地 Markdown、PDF、DOCX、文本和图片预览能力说明。
+
 ## 2.2.3
 
 发布时间：2026-05-26
