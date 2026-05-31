@@ -388,7 +388,7 @@ export function createLocalFileActionHtml(
       return /not implemented|not found|not available|not registered|no such method|method.*missing|plugin.*missing/iu.test(message);
     }
 
-    function requestBrowserDownload(message) {
+    function requestBrowserDownload(message, fallbackMessage) {
       status.textContent = message;
       const anchor = document.createElement('a');
       anchor.href = downloadHref;
@@ -400,9 +400,35 @@ export function createLocalFileActionHtml(
       window.setTimeout(() => {
         setBusy(openBtn, false);
         if (status.textContent === message) {
-          void explainMissingNativeDownload();
+          if (fallbackMessage) {
+            status.textContent = fallbackMessage;
+          } else {
+            void explainMissingNativeDownload();
+          }
         }
       }, 1200);
+    }
+
+    async function copyText(value) {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function' && window.isSecureContext) {
+        await navigator.clipboard.writeText(value);
+        return;
+      }
+      const textarea = document.createElement('textarea');
+      textarea.value = value;
+      textarea.setAttribute('readonly', 'true');
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      textarea.style.top = '0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      textarea.setSelectionRange(0, value.length);
+      const copied = document.execCommand('copy');
+      textarea.remove();
+      if (!copied) {
+        throw new Error('当前浏览器不允许复制。');
+      }
     }
 
     async function downloadWithMobileShell(absoluteUrl) {
@@ -445,10 +471,16 @@ export function createLocalFileActionHtml(
           return;
         }
 
-        requestBrowserDownload('当前 App 版本不支持直接打开，正在改为下载文件...');
+        requestBrowserDownload(
+          '当前 App 版本不支持直接打开，正在改为下载文件...',
+          '已请求系统下载；如果没有下载提示，请再次点击下载，或复制路径后在文件管理器中打开。'
+        );
       } catch (error) {
         if (isMissingNativeMethodError(error)) {
-          await explainMissingNativeDownload();
+          requestBrowserDownload(
+            '当前 App 版本不支持直接打开，已改为请求系统下载...',
+            '已请求系统下载；如果没有下载提示，请再次点击下载，或复制路径后在文件管理器中打开。'
+          );
         } else {
           status.textContent = error && error.message ? error.message : '打开失败，请尝试下载文件。';
         }
@@ -463,11 +495,21 @@ export function createLocalFileActionHtml(
       setBusy(openBtn, true);
       status.textContent = '正在请求下载...';
       try {
+        if (isAndroidShellPage()) {
+          requestBrowserDownload(
+            '已请求系统下载...',
+            '已请求系统下载；如果没有下载提示，请再次点击下载，或复制路径后在文件管理器中打开。'
+          );
+          return;
+        }
         if (await downloadWithMobileShell(absoluteUrl)) {
           setBusy(openBtn, false);
           return;
         }
-        requestBrowserDownload('正在请求系统下载...');
+        requestBrowserDownload(
+          '正在请求系统下载...',
+          '已请求浏览器下载；如果没有下载提示，请复制路径后在文件管理器中打开。'
+        );
       } catch (error) {
         if (isMissingNativeMethodError(error)) {
           await explainMissingNativeDownload();
@@ -480,7 +522,7 @@ export function createLocalFileActionHtml(
 
     copyBtn.addEventListener('click', async () => {
       try {
-        await navigator.clipboard.writeText(localPath);
+        await copyText(localPath);
         status.textContent = '路径已复制。';
       } catch {
         status.textContent = '复制失败，请手动选择路径。';

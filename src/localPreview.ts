@@ -262,6 +262,12 @@ async function openWithSystem(): Promise<void> {
 async function downloadWithSystem(): Promise<void> {
   setFileActionsDisabled(true)
   try {
+    if (isAndroidShell()) {
+      requestBrowserDownload()
+      setStatus('已请求系统下载；如果没有下载提示，请更新 Android 客户端或复制路径后用文件管理器打开。')
+      return
+    }
+
     const downloadFile = state.nativeFileActionsUnavailable ? null : getMobileShellMethod('downloadFileFromUrl')
     if (downloadFile) {
       setStatus('正在请求系统下载...')
@@ -289,7 +295,7 @@ async function downloadWithSystem(): Promise<void> {
     if (isAndroidShell() && (isMissingNativeMethodError(error) || isNativeTimeoutError(error))) {
       state.nativeFileActionsUnavailable = true
       requestBrowserDownload()
-      setStatus('原生下载未确认，已切换为兼容模式；如果没有下载提示，请再次点击下载或复制路径。', 'error')
+      setStatus('已切换为兼容下载；如果没有下载提示，请再次点击下载，或复制路径后用文件管理器打开。', 'error')
       return
     }
     throw error

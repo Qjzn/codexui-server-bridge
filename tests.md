@@ -1181,3 +1181,9 @@ This file tracks manual regression and feature verification steps.
   - 登录后 393x852 移动视口显示 `PDF 预览已就绪，共 2 页。`，页面 `scrollWidth == clientWidth`。
   - `复制路径` 在公开 HTTP 页面可用，状态显示 `路径已复制。`，干净会话 `errors=[]`。
   - 模拟 Android 原生 `downloadFileFromUrl` 不返回时，12 秒后不再卡在 `正在请求系统下载...`，按钮恢复，状态显示兼容下载提示；再次点击下载直接进入兼容下载。
+- 2026-05-31 Android 下载稳定性回归：
+  - `git diff --check` 通过。
+  - `npm.cmd run build` 通过。
+  - 浏览器自动化打开本地 `local-preview.html?path=README.md`，注入 Android 环境和不会返回的 `downloadFileFromUrl` 后点击 `下载`，页面直接显示 `已请求系统下载...`，`nativeDownloadCalled=false`，不再出现 `原生下载未确认`。
+  - 393x852 移动视口下 `scrollWidth <= clientWidth`，下载状态和按钮不造成横向溢出。
+  - 构建产物 `dist-cli/index.js` 已包含 `/codex-local-browse/*path` 文件操作页的 Android 分支：点击 `下载` 先触发浏览器/WebView 下载，不再等待原生下载 Promise。
